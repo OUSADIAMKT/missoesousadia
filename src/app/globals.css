@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+/*
+ * Identidade visual Ousadia Marketing — extraída de SYSTEM_DESIGN.md
+ * (paleta oficial) e da implementação de referência em ousadia-site.
+ * Laranja amazônico + preto editorial + creme, sem gradiente, sem verde clichê.
+ */
+:root {
+  --background: #f5f0e8; /* brand-light — creme */
+  --surface: #ffffff;
+  --surface-alt: #f0ebe0;
+  --foreground: #0d0d0d; /* text-primary — preto editorial */
+  --muted: #5c5c5c; /* text-secondary */
+  --border: #e0d9cc;
+  --brand: #d4500a; /* brand-primary — laranja amazônico */
+  --brand-dark: #0d0d0d; /* brand-dark — preto editorial */
+  --accent: #c4952a; /* accent-gold */
+  --accent-soft: #f3e7d2; /* tinta clara do dourado */
+  --accent-green: #1a3c2e; /* verde Amazônia profunda — não clichê */
+  --accent-green-soft: #dfe8e3;
+  --danger: #b3261e;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-alt: var(--surface-alt);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-brand: var(--brand);
+  --color-brand-dark: var(--brand-dark);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-accent-green: var(--accent-green);
+  --color-accent-green-soft: var(--accent-green-soft);
+  --color-danger: var(--danger);
+  --font-display: var(--font-fraunces);
+  --font-sans: var(--font-outfit);
+  --font-mono: var(--font-jetbrains-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-sans), sans-serif;
+}
+
+h1, h2, h3, .font-display {
+  font-family: var(--font-display), serif;
+}
+
+::selection {
+  background: var(--accent-soft);
+  color: var(--brand-dark);
+}

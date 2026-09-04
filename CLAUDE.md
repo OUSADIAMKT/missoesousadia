@@ -1,0 +1,53 @@
+# CLAUDE.md
+
+Este arquivo fornece orientações ao Claude Code (claude.ai/code) para trabalhar com o código deste repositório.
+
+@AGENTS.md
+
+## O que é este projeto
+
+"Missões da Ousadia" — a Central de Operações da Ousadia Marketing, uma página única com 4 áreas (🏠 Hoje, 🎯 Missões, 📁 Projetos, 📊 Performance) construída com Next.js 16 (App Router), React 19, TypeScript e Tailwind CSS 4. Todo o texto da interface, nomes de variáveis e vocabulário do domínio estão em português brasileiro (tarefas são "tarefas"/"missões", organizadas em `Cliente → Projeto → Missão`, membros do time "usuários"/"quem"). Mantenha código novo e textos de interface consistentes com esse vocabulário em português.
+
+O produto responde duas perguntas diferentes: "o que temos para fazer" (o Kanban em Missões) e "o que precisa de atenção agora, quem está sobrecarregado, onde a operação está travando" (Hoje/Projetos/Performance). Ao adicionar funcionalidade, pense em qual das 4 áreas ela pertence antes de colocá-la em `page.tsx`.
+
+Backend: [Supabase](https://supabase.com) (Postgres + Auth). Login é feito com Google, restrito a uma lista fechada de e-mails (tabela `usuarios` — ver `supabase/schema.sql`); quem não está cadastrado é barrado mesmo autenticado no Google. Todo o estado (tarefas, clientes, projetos, usuários, histórico, bloqueios) mora no banco compartilhado, sincronizado em tempo real entre todo mundo via Supabase Realtime — não há mais `localStorage` para dados de domínio (só o Supabase guarda a sessão via cookies, ver `src/lib/supabase/`).
+
+## Comandos
+
+- `npm run dev` — inicia o servidor de desenvolvimento (Turbopack, padrão do Next 16)
+- `npm run build` — build de produção
+- `npm run start` — executa o build de produção
+- `npm run lint` — ESLint (configuração flat via `eslint.config.mjs`, `eslint-config-next`)
+- `npm test` — roda `node --test` (test runner nativo do Node, sem dependência nova) sobre `src/**/*.test.ts`; hoje só cobre as funções puras de `src/lib/utils.ts`. Os arquivos de teste importam uns aos outros com extensão `.ts` explícita (exigência do resolvedor nativo do Node) — por isso `tsconfig.json` tem `allowImportingTsExtensions: true`.
+
+## Antes de escrever código Next.js
+
+Este projeto fixa `next@16.3.4`, uma versão mais recente do que a maior parte dos dados de treinamento. Conforme [AGENTS.md](AGENTS.md), leia o guia relevante em `node_modules/next/dist/docs/` antes de confiar em convenções do App Router que você já conhece — APIs e convenções de arquivos podem ter mudado. Note que `layout.tsx` já usa a assinatura de props tipada mais recente `LayoutProps<"/">`, em vez do tipo clássico escrito à mão `{ children: React.ReactNode }`.
+
+## Arquitetura
+
+`src/app` tem 3 rotas: `/` (o app, atrás de login), `/login` (tela de "Entrar com Google") e `/auth/callback` (troca o código do OAuth pela sessão). `src/proxy.ts` (não `middleware.ts` — renomeado no Next 16, ver AGENTS.md) roda em toda request, renova o cookie de sessão do Supabase e redireciona quem não está logado para `/login`. A estrutura real a entender é o fluxo de dados entre hooks e componentes:
+
+- **`supabase/schema.sql`** — fonte da verdade do banco: tabelas, RLS e os triggers que gravam `historico_status`/`criado_por` de bloqueios sozinhos a partir de quem está logado (`nome_do_usuario_logado()`, via `auth.jwt() ->> 'email'`) — o cliente não manda mais "quem fez isso", o banco resolve. `usuarios.papel` distingue `admin`/`membro`: `is_team_member()` (qualquer um dos dois) segue liberando missões/clientes/projetos pra todo mundo, mas só `is_admin()` pode inserir/editar/remover linhas de `usuarios` (RLS por comando, não `for all`) — é a única tabela com essa distinção; o resto do sistema não tem conceito de papel. Rodado manualmente uma vez no SQL Editor do Supabase (não há migration runner).
+- **`src/lib/types.ts`** — o modelo de domínio. `Tarefa` tem um `status` (um dos 7 valores fixos da tupla `STATUSES`, cobrindo o fluxo de aprovação do cliente: A Fazer → Em Andamento → Em Revisão → Aguardando Cliente → Ajustes Solicitados/Aprovado → Concluído), `prioridade`/`complexidade`, `dataInicio`/`prazoEntrega`, `bloqueios` (array de `Bloqueio`, cada um com `resolvidoEm: string | null` enquanto ativo) e um `historico` (array de `HistoricoStatus`). `projetoId` referencia um `Projeto`, que referencia um `Cliente` via `clienteId` (`valorMensal` opcional no Cliente é a base para rentabilidade numa fase futura). `TarefaComContexto` é a `Tarefa` com `projeto`/`cliente` já resolvidos, usada por toda a UI para não repetir `find()`. `Usuario` é `{ id, nome, email }` — a lista de acesso. `NovaTarefa` é uma `Tarefa` sem os campos atribuídos pelo sistema (`id`, `dataRegistro`, `historico`).
+- **`src/lib/supabase/`** — `client.ts` (cliente do navegador, uma instância só por aba — recriar a cada render dispara o aviso "Multiple GoTrueClient instances" do Supabase), `server.ts` (cliente para Server/Route Handlers, usado só em `auth/callback`) e `mappers.ts` (converte linhas snake_case do Postgres para os tipos camelCase de `types.ts`, ex.: `tarefaFromRow`).
+- **`src/lib/useTarefas.ts`**, **`src/lib/useUsuarios.ts`** e **`src/lib/useEstrutura.ts`** — hooks client-side que buscam do Supabase ao montar e assinam Realtime (`postgres_changes`) nas tabelas relevantes, então uma mudança feita por uma pessoa aparece na tela das outras sem recarregar. As mutações (`adicionar`, `atualizar`, `remover`, `adicionarBloqueio`, `resolverBloqueio`, `atualizarCliente`, `removerCliente`, etc.) não recebem mais um parâmetro `usuario` — quem fez o quê vem do login, resolvido no banco (ver `schema.sql` acima) — e retornam `Promise<boolean>` (`true`/`false` de sucesso; já logam o erro no console sozinhas), para quem chama decidir o que fazer na falha (fechar modal ou não, mostrar aviso). `adicionarCliente`/`adicionarProjeto`/`encontrarOuCriarProjeto` continuam retornando `Promise<string>` (o id, ou `""` em falha). `useUsuarios` não tem mais "escolher quem eu sou": `usuarioAtual` é derivado comparando o e-mail da sessão Supabase com a tabela `usuarios`; `semAcesso` fica `true` quando o login é válido mas o e-mail não está cadastrado (`page.tsx` mostra uma tela de bloqueio nesse caso); `souAdmin` (`usuarioLogado?.papel === "admin"`) controla se `GerenciarUsuarios` mostra os controles de adicionar/remover acesso — a RLS de `usuarios` já bloqueia quem não é admin mesmo que a UI falhasse em esconder.
+- **`src/app/page.tsx`** — o shell da aplicação: cabeçalho com a marca, navegação entre as 4 áreas (estado local `areaAtiva`, sem roteamento dentro do app), a tela de "Sem acesso", um toast de erro (`erro`/`notificarErro`) mostrado quando alguma mutação falha, e composição dos três hooks acima. Deriva `tarefasComContexto` e `tarefasFiltradas` com `useMemo`, e repassa callbacks para baixo — inclusive versões que checam o booleano de sucesso das mutações e chamam `notificarErro` na falha (`salvar`, `excluir`, `moverStatus`). É o primeiro lugar a olhar ao rastrear como uma ação (ex.: mover um card) flui de ponta a ponta.
+- **`src/components/areas/`** — uma área por arquivo (`AreaHoje`, `AreaMissoes`, `AreaProjetos`, `AreaPerformance`), todas guiadas por props vindas de `page.tsx`. `AreaMissoes` é o Kanban original (`Filtros` + `KanbanBoard`); `AreaHoje` agrupa tarefas atrasadas/bloqueadas/com prazo próximo/aguardando ação do usuário atual; `AreaProjetos` é o CRUD de Cliente/Projeto (ações destrutivas pedem confirmação via `window.confirm` e notificam erro pela prop `onNotificarErro`); `AreaPerformance` tem "Carga por pessoa" (missões ativas por responsável, sinalizando quem está bem acima da média do time) e a contagem de missões por status — gargalos, tempo de ciclo e rentabilidade por cliente ficam para uma fase futura.
+- **`src/components/`** — componentes de apresentação; nenhum deles fala com o Supabase diretamente. `KanbanBoard` renderiza uma coluna para cada item de `STATUSES` e implementa arrastar-e-soltar (drag-and-drop nativo do HTML5, com o id da tarefa passado via `dataTransfer`) para mudar o status — todo card também tem um `<select>` de status, alternativa acessível ao drag-and-drop. `TarefaForm` é o modal de criação/edição (seleciona Cliente/Projeto por nome via `<datalist>`, chamando `encontrarOuCriarProjeto` no submit — por isso `submeter` é `async`), pede confirmação antes de excluir, mostra erro inline se salvar/excluir falhar, e também renderiza bloqueios e o histórico de mudanças de status; a resincronização do formulário com a tarefa em edição depende só do `id` dela (não do objeto inteiro), para não resetar o que a pessoa está digitando toda vez que qualquer outra tarefa muda via Realtime. `Filtros` são os controles de filtro (cliente, projeto, quem, prioridade, busca); `GerenciarUsuarios` gerencia a lista de e-mails com acesso (com confirmação antes de revogar) e tem o botão de sair. `TarefaForm` e `GerenciarUsuarios` são diálogos acessíveis (`role="dialog"`, fecham com Esc).
+- **`src/lib/utils.ts`** — funções puras auxiliares: formatação/comparação de datas (`isAtrasada`, `isProximaDoPrazo` — já ignoram tarefas "Aprovado"/"Concluído"), cores determinísticas de avatar por usuário (`corResponsavel`, geradas a partir de um hash do nome), cores por status/prioridade (`corStatus`, `corPrioridade`), `formatBRL` (formato R$ 1.500,00), ids determinísticos de seed (`idClienteSeed`, `idProjetoPadraoSeed` — usados só pelo seed em `schema.sql`) e `uid()` (usa `crypto.randomUUID()` com um fallback).
+
+Para rodar localmente: copie `.env.local.example` para `.env.local` com as credenciais do seu projeto Supabase, e rode o SQL de `supabase/schema.sql` (uma vez, editando os e-mails do seed) — sem isso, tudo que depende do Supabase lança um erro claro ao montar (não uma tela branca).
+
+## Estilo
+
+Tailwind CSS 4 via `@theme inline` em `src/app/globals.css`, mapeando propriedades customizadas de CSS (`--background`, `--brand`, `--accent`, `--danger`, etc.) para tokens de cor do Tailwind (`bg-brand`, `text-danger`, ...) e duas variáveis de fonte (`--font-display` → Fraunces serif para títulos, `--font-sans` → Hanken Grotesk para o corpo do texto) carregadas via `next/font/google` em `layout.tsx`. Reutilize esses tokens/classes em vez de introduzir novas cores "cruas".
+
+## PRODUTO
+Missões da Ousadia — Central de Operações da Ousadia Marketing
+
+## Regras
+- Textos sempre em português
+- Valores monetários em formato R$ 1.500,00
+- Estilo via tailwind, sem css customizado
+- Não usar bibliotecas externas sem perguntar antes
