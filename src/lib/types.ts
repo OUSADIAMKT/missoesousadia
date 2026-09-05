@@ -10,6 +10,12 @@ export const STATUSES = [
 
 export type Status = (typeof STATUSES)[number];
 
+// Status que marcam o trabalho ativo como encerrado — usado por isAtrasada/
+// isProximaDoPrazo (utils.ts) e pelos relatórios de Performance (por cliente e
+// por colaborador) para separar "o que já saiu da mesa" do resto do fluxo.
+export const STATUSES_CONCLUIDOS: Status[] = ["Aprovado", "Concluído"];
+export const STATUSES_PENDENTES = STATUSES.filter((s) => !STATUSES_CONCLUIDOS.includes(s));
+
 export const PRIORIDADES = ["Baixa", "Normal", "Alta", "Urgente"] as const;
 
 export type Prioridade = (typeof PRIORIDADES)[number];

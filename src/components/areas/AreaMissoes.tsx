@@ -9,6 +9,7 @@ interface AreaMissoesProps {
   clientes: Cliente[];
   projetos: Projeto[];
   usuarios: Usuario[];
+  usuarioAtual: string;
   clienteId: string;
   projetoId: string;
   quem: string;
@@ -28,6 +29,7 @@ export function AreaMissoes({
   clientes,
   projetos,
   usuarios,
+  usuarioAtual,
   clienteId,
   projetoId,
   quem,
@@ -42,11 +44,12 @@ export function AreaMissoes({
   onMoverStatus,
 }: AreaMissoesProps) {
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-4 rounded-2xl bg-slate-50 p-4">
       <Filtros
         clientes={clientes}
         projetos={projetos}
         usuarios={usuarios}
+        usuarioAtual={usuarioAtual}
         clienteId={clienteId}
         projetoId={projetoId}
         quem={quem}
@@ -60,7 +63,7 @@ export function AreaMissoes({
       />
 
       {tarefas.length === 0 ? (
-        <p className="rounded-sm border border-dashed border-border bg-surface px-4 py-10 text-center text-sm text-muted">
+        <p className="rounded-xl border border-dashed border-neutral-300 bg-white px-4 py-10 text-center text-sm text-muted">
           Nenhuma missão encontrada com esses filtros.
         </p>
       ) : (

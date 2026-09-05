@@ -1,15 +1,12 @@
 "use client";
 
-import { STATUSES, type Status, type TarefaComContexto } from "@/lib/types";
-import { corResponsavel, corStatus, formatDateBR, iniciais } from "@/lib/utils";
+import { STATUSES_CONCLUIDOS, STATUSES_PENDENTES, type TarefaComContexto } from "@/lib/types";
+import { corStatus, dataDeConclusao, formatDateBR } from "@/lib/utils";
 
 interface RelatorioClienteProps {
   clienteNome: string;
   tarefas: TarefaComContexto[];
 }
-
-const STATUSES_CONCLUIDOS: Status[] = ["Aprovado", "Concluído"];
-const STATUSES_PENDENTES = STATUSES.filter((s) => !STATUSES_CONCLUIDOS.includes(s));
 
 interface EsforcoProjeto {
   nome: string;
@@ -51,18 +48,12 @@ function calcularProfissionaisEnvolvidos(tarefas: TarefaComContexto[]): Envolvid
   return Array.from(porPessoa.values()).sort((a, b) => b.qtdMissoes - a.qtdMissoes);
 }
 
-// `historico` vem ordenado do mais recente para o mais antigo (ver
-// tarefaFromRow em mappers.ts), então o item [0] é a última mudança de status.
-function dataDeConclusao(tarefa: TarefaComContexto): string | null {
-  return tarefa.historico[0]?.data.slice(0, 10) ?? null;
-}
-
 export function RelatorioCliente({ clienteNome, tarefas }: RelatorioClienteProps) {
   const total = tarefas.length;
 
   if (total === 0) {
     return (
-      <p className="rounded-sm border border-dashed border-border bg-surface px-4 py-6 text-center text-sm text-muted">
+      <p className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">
         {clienteNome} ainda não tem missões registradas.
       </p>
     );
@@ -78,53 +69,70 @@ export function RelatorioCliente({ clienteNome, tarefas }: RelatorioClienteProps
 
   return (
     <div className="flex flex-col gap-6">
-      <div className="rounded-sm border border-border bg-surface p-4">
-        <h2 className="font-display text-lg font-semibold text-brand-dark">
-          Resumo — {clienteNome}
-        </h2>
+      <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+        <h2 className="font-sans text-lg font-bold text-slate-900">Resumo — {clienteNome}</h2>
         <div className="mt-3 flex flex-wrap gap-6">
           <div>
-            <p className="text-2xl font-semibold text-foreground">{total}</p>
-            <p className="text-xs text-muted">missões no total</p>
+            <p className="text-2xl font-bold text-slate-900">{total}</p>
+            <p className="text-xs text-slate-500">missões no total</p>
           </div>
           <div>
-            <p className="text-2xl font-semibold text-accent-green">{pctConcluido}%</p>
-            <p className="text-xs text-muted">concluído/aprovado</p>
+            <p className="text-2xl font-bold text-accent-green">{pctConcluido}%</p>
+            <p className="text-xs text-slate-500">concluído/aprovado</p>
           </div>
           <div>
-            <p className="text-2xl font-semibold text-foreground">
+            <p className="text-2xl font-bold text-slate-900">
               {horasTotal}h
               {semEstimativaTotal > 0 && (
-                <span className="ml-1 text-xs font-normal text-muted">
+                <span className="ml-1 text-xs font-normal text-slate-500">
                   (+{semEstimativaTotal} sem estimativa)
                 </span>
               )}
             </p>
-            <p className="text-xs text-muted">esforço estimado</p>
+            <p className="text-xs text-slate-500">esforço estimado</p>
           </div>
+        </div>
+
+        {/* Barra segmentada: concluído vs pendente */}
+        <div className="mt-4 flex h-2 w-full overflow-hidden rounded-full bg-slate-200">
+          <div
+            className="h-full bg-accent-green transition-all duration-300"
+            style={{ width: `${pctConcluido}%` }}
+            title={`Concluído/Aprovado · ${pctConcluido}%`}
+          />
+          <div
+            className="h-full bg-brand transition-all duration-300"
+            style={{ width: `${100 - pctConcluido}%` }}
+            title={`Pendente · ${100 - pctConcluido}%`}
+          />
         </div>
       </div>
 
       <div className="grid gap-6 md:grid-cols-2">
-        <div className="rounded-sm border border-border bg-surface p-4">
-          <h3 className="font-display text-base font-semibold text-brand-dark">O que foi feito</h3>
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <h3 className="font-sans text-sm font-bold uppercase tracking-wide text-slate-500">
+            O que foi feito ({concluidas.length})
+          </h3>
           {concluidas.length === 0 ? (
-            <p className="mt-2 text-sm text-muted">Nenhuma missão concluída ou aprovada ainda.</p>
+            <p className="mt-3 text-sm text-slate-500">Nenhuma missão concluída ou aprovada ainda.</p>
           ) : (
             <ul className="mt-3 space-y-2">
               {concluidas.map((t) => {
                 const concluidaEm = dataDeConclusao(t);
                 return (
-                  <li key={t.id} className="flex items-start justify-between gap-2 text-sm">
+                  <li
+                    key={t.id}
+                    className="flex items-start justify-between gap-2 rounded-lg border border-slate-200/60 border-l-4 border-l-accent-green bg-slate-50 p-2.5 text-sm"
+                  >
                     <span>
                       {t.titulo}
-                      <span className="block text-xs text-muted">
+                      <span className="block text-xs text-slate-500">
                         {t.projeto?.nome ?? "Sem projeto"}
                         {concluidaEm && ` · concluído em ${formatDateBR(concluidaEm)}`}
                       </span>
                     </span>
                     <span
-                      className={`shrink-0 rounded-sm border px-1.5 py-0.5 text-[10px] font-semibold ${corStatus(
+                      className={`shrink-0 rounded-full border px-1.5 py-0.5 text-[10px] font-semibold ${corStatus(
                         t.status
                       )}`}
                     >
@@ -137,10 +145,12 @@ export function RelatorioCliente({ clienteNome, tarefas }: RelatorioClienteProps
           )}
         </div>
 
-        <div className="rounded-sm border border-border bg-surface p-4">
-          <h3 className="font-display text-base font-semibold text-brand-dark">O que falta</h3>
+        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+          <h3 className="font-sans text-sm font-bold uppercase tracking-wide text-slate-500">
+            O que falta ({pendentes.length})
+          </h3>
           {pendentes.length === 0 ? (
-            <p className="mt-2 text-sm text-muted">Nada pendente — tudo concluído ou aprovado.</p>
+            <p className="mt-3 text-sm text-accent-green">Nada pendente — tudo concluído ou aprovado.</p>
           ) : (
             <div className="mt-3 space-y-3">
               {STATUSES_PENDENTES.map((status) => {
@@ -148,14 +158,17 @@ export function RelatorioCliente({ clienteNome, tarefas }: RelatorioClienteProps
                 if (doStatus.length === 0) return null;
                 return (
                   <div key={status}>
-                    <p className="text-xs font-semibold text-muted">
+                    <p className="text-xs font-semibold text-slate-500">
                       {status} ({doStatus.length})
                     </p>
-                    <ul className="mt-1 space-y-1">
+                    <ul className="mt-1 space-y-1.5">
                       {doStatus.map((t) => (
-                        <li key={t.id} className="text-sm text-foreground">
+                        <li
+                          key={t.id}
+                          className="rounded-lg border border-slate-200/60 border-l-4 border-l-brand bg-slate-50 p-2.5 text-sm text-slate-800"
+                        >
                           {t.titulo}
-                          <span className="ml-1 text-xs text-muted">
+                          <span className="ml-1 text-xs text-slate-500">
                             — prazo {formatDateBR(t.prazoEntrega)}
                           </span>
                         </li>
@@ -169,32 +182,38 @@ export function RelatorioCliente({ clienteNome, tarefas }: RelatorioClienteProps
         </div>
       </div>
 
-      <div className="rounded-sm border border-border bg-surface p-4">
-        <h3 className="font-display text-base font-semibold text-brand-dark">
+      <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
+        <h3 className="font-sans text-sm font-bold uppercase tracking-wide text-slate-500">
           Profissionais envolvidos
         </h3>
-        <p className="mb-3 mt-1 text-xs text-muted">
+        <p className="mb-3 mt-1 text-xs text-slate-500">
           Missões e horas estimadas por pessoa — ainda não é custo real (falta valor de hora por
           pessoa), é uma base para pensar precificação.
         </p>
-        <ul className="space-y-1.5">
-          {envolvidos.map((e) => (
-            <li key={e.nome} className="flex items-center gap-3 text-sm">
-              <span
-                className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[10px] font-semibold ${corResponsavel(
-                  e.nome
-                )}`}
-              >
-                {iniciais(e.nome)}
-              </span>
-              <span className="flex-1 text-foreground">{e.nome}</span>
-              <span className="text-xs text-muted">{e.qtdMissoes} missões</span>
-              <span className="w-20 shrink-0 text-right text-xs text-muted">
-                {e.horasEstimadas}h est.
-              </span>
-            </li>
-          ))}
-        </ul>
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-xs text-slate-600">
+            <thead className="border-y border-slate-200/60 bg-slate-50 text-[10px] font-semibold uppercase text-slate-400">
+              <tr>
+                <th className="px-3 py-2.5">Profissional</th>
+                <th className="px-3 py-2.5">Missões</th>
+                <th className="px-3 py-2.5">Horas est.</th>
+                <th className="px-3 py-2.5 text-right">Participação</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {envolvidos.map((e) => (
+                <tr key={e.nome} className="transition-colors hover:bg-slate-50/80">
+                  <td className="px-3 py-2 font-semibold text-slate-800">{e.nome}</td>
+                  <td className="px-3 py-2">{e.qtdMissoes} missões</td>
+                  <td className="px-3 py-2">{e.horasEstimadas}h</td>
+                  <td className="px-3 py-2 text-right font-semibold text-slate-700">
+                    {Math.round((e.qtdMissoes / total) * 100)}%
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
   );

@@ -1,4 +1,4 @@
-import type { Prioridade, Status } from "./types";
+import { STATUSES_CONCLUIDOS, type Prioridade, type Status, type TarefaComContexto } from "./types.ts";
 
 export function formatDateBR(iso: string): string {
   if (!iso) return "—";
@@ -19,16 +19,14 @@ export function formatDateTimeBR(isoDateTime: string): string {
   });
 }
 
-const STATUSES_SEM_URGENCIA: Status[] = ["Concluído", "Aprovado"];
-
 export function isAtrasada(prazoEntrega: string, status: Status): boolean {
-  if (STATUSES_SEM_URGENCIA.includes(status)) return false;
+  if (STATUSES_CONCLUIDOS.includes(status)) return false;
   const hoje = new Date().toISOString().slice(0, 10);
   return prazoEntrega < hoje;
 }
 
 export function isProximaDoPrazo(prazoEntrega: string, status: Status): boolean {
-  if (STATUSES_SEM_URGENCIA.includes(status)) return false;
+  if (STATUSES_CONCLUIDOS.includes(status)) return false;
   const hoje = new Date();
   const limite = new Date();
   limite.setDate(hoje.getDate() + 2);
@@ -86,6 +84,42 @@ export function corStatus(status: Status): string {
   return CORES_STATUS[status];
 }
 
+// Preenchimento sólido para barra de progresso (ex.: Performance) — CORES_STATUS é
+// pensado para badge com fundo suave, e extrair só o bg de lá deixaria a barra de
+// "Aguardando Cliente" quase invisível (bg-brand-dark/5). Reaproveita os tokens de
+// marca onde dá; usa indigo para "Aguardando Cliente", mesma lógica do chip
+// "Com o Cliente" do Kanban — precisa de uma cor própria pra não sumir ao lado do preto.
+const CORES_BARRA_STATUS: Record<Status, string> = {
+  "A Fazer": "bg-neutral-300",
+  "Em Andamento": "bg-brand",
+  "Em Revisão": "bg-accent",
+  "Aguardando Cliente": "bg-indigo-400",
+  "Ajustes Solicitados": "bg-danger",
+  "Aprovado": "bg-emerald-400",
+  "Concluído": "bg-accent-green",
+};
+
+export function corBarraStatus(status: Status): string {
+  return CORES_BARRA_STATUS[status];
+}
+
+// Mesmas decisões de cor de CORES_BARRA_STATUS, só que como utility `fill-*` do
+// Tailwind (em vez de `bg-*`) — para colorir barras de gráficos recharts via
+// `className` no `<Cell>`, já que SVG usa a propriedade `fill`, não `background`.
+const FILL_BARRA_STATUS: Record<Status, string> = {
+  "A Fazer": "fill-neutral-300",
+  "Em Andamento": "fill-brand",
+  "Em Revisão": "fill-accent",
+  "Aguardando Cliente": "fill-indigo-400",
+  "Ajustes Solicitados": "fill-danger",
+  "Aprovado": "fill-emerald-400",
+  "Concluído": "fill-accent-green",
+};
+
+export function corBarraStatusFill(status: Status): string {
+  return FILL_BARRA_STATUS[status];
+}
+
 // Prioridade sobe em intensidade: neutro → dourado → laranja de marca → vermelho.
 const CORES_PRIORIDADE: Record<Prioridade, string> = {
   Baixa: "bg-surface-alt text-muted border-border",
@@ -96,6 +130,39 @@ const CORES_PRIORIDADE: Record<Prioridade, string> = {
 
 export function corPrioridade(prioridade: Prioridade): string {
   return CORES_PRIORIDADE[prioridade];
+}
+
+// Badge de prazo no card: mesmo padrão de corStatus/corPrioridade, reaproveitando
+// os tokens de marca (danger/accent) em vez de introduzir cores novas.
+export function corPrazo(atrasada: boolean, proxima: boolean): string {
+  if (atrasada) return "bg-danger/10 text-danger border-danger/30";
+  if (proxima) return "bg-accent-soft text-accent border-accent/30";
+  return "border-border text-muted";
+}
+
+// Micro-chip de fase dentro da coluna consolidada "Validação & Gargalos" do Kanban —
+// distingue as 3 travas por cor própria (âmbar/azul/vermelho), à parte da paleta de
+// marca usada em corStatus, porque aqui o objetivo é diferenciar 3 estados lado a lado
+// de forma rápida, não representar a identidade visual do app.
+const FASES_VALIDACAO: Partial<Record<Status, { rotulo: string; classe: string }>> = {
+  "Em Revisão": { rotulo: "Revisão Interna", classe: "bg-amber-50 text-amber-700 border-amber-200" },
+  "Aguardando Cliente": { rotulo: "Com o Cliente", classe: "bg-blue-50 text-blue-700 border-blue-200" },
+  "Ajustes Solicitados": {
+    rotulo: "Ajuste Solicitado",
+    classe: "bg-red-50 text-red-700 border-red-200",
+  },
+};
+
+export function faseValidacao(status: Status): { rotulo: string; classe: string } | null {
+  return FASES_VALIDACAO[status] ?? null;
+}
+
+// `historico` vem ordenado do mais recente para o mais antigo (ver
+// tarefaFromRow em mappers.ts), então o item [0] é a última mudança de status —
+// usado pelos relatórios de Performance (por cliente e por colaborador) para
+// mostrar quando uma entrega foi concluída/aprovada.
+export function dataDeConclusao(tarefa: TarefaComContexto): string | null {
+  return tarefa.historico[0]?.data.slice(0, 10) ?? null;
 }
 
 export function formatBRL(valor: number): string {

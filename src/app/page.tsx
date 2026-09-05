@@ -236,6 +236,7 @@ export default function Home() {
           clientes={estrutura.clientes}
           projetos={estrutura.projetos}
           usuarios={usuarios}
+          usuarioAtual={usuarioAtual}
           clienteId={clienteId}
           projetoId={projetoId}
           quem={quem}

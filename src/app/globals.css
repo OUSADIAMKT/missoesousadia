@@ -46,8 +46,16 @@ body {
   font-family: var(--font-sans), sans-serif;
 }
 
-h1, h2, h3, .font-display {
-  font-family: var(--font-display), serif;
+/*
+ * Em @layer base para que utilities do Tailwind (ex.: font-sans num h3 específico)
+ * consigam sobrepor esta regra — CSS fora de @layer sempre vence CSS em camada,
+ * não importa a especificidade, então sem isso um className="font-sans" num h1/h2/h3
+ * nunca teria efeito nenhum.
+ */
+@layer base {
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display), serif;
+  }
 }
 
 ::selection {
