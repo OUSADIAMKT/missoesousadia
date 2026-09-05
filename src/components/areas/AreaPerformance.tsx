@@ -1,9 +1,22 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { STATUSES, type TarefaComContexto } from "@/lib/types";
-import { corBarraStatus, corResponsavel, iniciais } from "@/lib/utils";
+import {
+  Bar,
+  BarChart,
+  Cell,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  Treemap,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { STATUSES, STATUSES_CONCLUIDOS, type TarefaComContexto } from "@/lib/types";
+import { corGraficoEscuro, corResponsavel, corSequencialEscura, iniciais } from "@/lib/utils";
 import { calcularCargaPorPessoa } from "@/lib/performance-metrics";
+import { CardPainel, KpiTile, LegendaStatus, TooltipEscuro } from "./painel/PainelUI";
 import { EspelhoColaborador } from "./EspelhoColaborador";
 import { RelatorioCliente } from "./RelatorioCliente";
 
@@ -15,15 +28,68 @@ interface AreaPerformanceProps {
 
 export function AreaPerformance({ tarefas }: AreaPerformanceProps) {
   const total = tarefas.length;
-  const cargaPorPessoa = calcularCargaPorPessoa(tarefas);
-  const maiorCarga = cargaPorPessoa[0]?.qtd ?? 0;
 
-  const concluidasGlobal = tarefas.filter(
-    (t) => t.status === "Concluído" || t.status === "Aprovado"
-  ).length;
+  const concluidasGlobal = tarefas.filter((t) => STATUSES_CONCLUIDOS.includes(t.status)).length;
   const emAndamentoGlobal = tarefas.filter((t) => t.status === "Em Andamento").length;
   const emRiscoGlobal = tarefas.filter((t) => t.status === "Ajustes Solicitados").length;
   const taxaConclusaoGlobal = total > 0 ? Math.round((concluidasGlobal / total) * 100) : 0;
+
+  // Distribuição por status — só os que têm volume entram no donut; os zerados
+  // viram uma nota compacta, em vez de metade do gráfico ser linha vazia.
+  const porStatus = useMemo(
+    () =>
+      STATUSES.map((status) => {
+        const qtd = tarefas.filter((t) => t.status === status).length;
+        return {
+          status,
+          qtd,
+          pct: total > 0 ? Math.round((qtd / total) * 100) : 0,
+          cor: corGraficoEscuro(status),
+        };
+      }),
+    [tarefas, total]
+  );
+  const statusComVolume = porStatus.filter((s) => s.qtd > 0);
+  const statusZerados = porStatus.filter((s) => s.qtd === 0);
+
+  // Carga por pessoa, segmentada por status: mostra não só quanto cada um tem
+  // na mão, mas o quê.
+  const statusAtivos = useMemo(
+    () => STATUSES.filter((s) => !STATUSES_CONCLUIDOS.includes(s)),
+    []
+  );
+  const carga = calcularCargaPorPessoa(tarefas);
+  const statusAtivosComVolume = statusAtivos.filter((s) =>
+    tarefas.some((t) => t.status === s)
+  );
+  const cargaEmpilhada = useMemo(
+    () =>
+      carga.map(({ nome }) => {
+        const linha: Record<string, string | number> = { nome };
+        for (const s of statusAtivos) {
+          linha[s] = tarefas.filter((t) => t.quem === nome && t.status === s).length;
+        }
+        return linha;
+      }),
+    [carga, statusAtivos, tarefas]
+  );
+
+  const porCliente = useMemo(() => {
+    const mapa = new Map<string, { name: string; size: number; horas: number }>();
+    for (const t of tarefas) {
+      const nome = t.cliente?.nome ?? "Sem cliente";
+      const atual = mapa.get(nome) ?? { name: nome, size: 0, horas: 0 };
+      atual.size += 1;
+      atual.horas += t.horasEstimadas ?? 0;
+      mapa.set(nome, atual);
+    }
+    return Array.from(mapa.values())
+      .sort((a, b) => b.size - a.size)
+      .map((c, i) => ({ ...c, fill: corSequencialEscura(i) }));
+  }, [tarefas]);
+  const clienteLider = porCliente[0];
+  const pctClienteLider =
+    clienteLider && total > 0 ? Math.round((clienteLider.size / total) * 100) : 0;
 
   const clientes = useMemo(() => {
     const porId = new Map<string, string>();
@@ -41,188 +107,241 @@ export function AreaPerformance({ tarefas }: AreaPerformanceProps) {
   }, [tarefas]);
 
   const [visao, setVisao] = useState<VisaoRelatorio>("cliente");
-
   const [clienteId, setClienteId] = useState("");
   const clienteSelecionado = clientes.find((c) => c.id === clienteId);
   const tarefasDoCliente = useMemo(
     () => tarefas.filter((t) => t.cliente?.id === clienteId),
     [tarefas, clienteId]
   );
-
   const [colaboradorNome, setColaboradorNome] = useState("");
   const tarefasDoColaborador = useMemo(
     () => tarefas.filter((t) => t.quem === colaboradorNome),
     [tarefas, colaboradorNome]
   );
 
+  const classeSelect =
+    "h-9 rounded-lg border border-slate-700 bg-slate-800 px-3 text-xs font-semibold text-slate-100 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/30";
+
   return (
-    <div className="flex flex-col gap-6">
-      {/* KPIs globais */}
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Total de missões
-          </span>
-          <div className="mt-1 text-2xl font-bold text-slate-900">{total}</div>
-          <span className="mt-1 inline-block text-[11px] font-medium text-slate-500">
-            Volume total registrado
-          </span>
-        </div>
-
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Taxa de conclusão
-          </span>
-          <div className="mt-1 text-2xl font-bold text-slate-900">{taxaConclusaoGlobal}%</div>
-          <span className="mt-1 inline-block rounded-full bg-accent-green-soft px-2 py-0.5 text-[11px] font-semibold text-accent-green">
-            Vazão da agência
-          </span>
-        </div>
-
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Em produção
-          </span>
-          <div className="mt-1 text-2xl font-bold text-brand">{emAndamentoGlobal}</div>
-          <span className="mt-1 inline-block text-[11px] font-medium text-slate-500">
-            Missões em andamento
-          </span>
-        </div>
-
-        <div className="rounded-xl border border-slate-200/80 bg-white p-4 shadow-sm">
-          <span className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-            Ajustes / risco
-          </span>
-          <div className="mt-1 text-2xl font-bold text-danger">{emRiscoGlobal}</div>
-          <span className="mt-1 inline-block rounded-full bg-danger/10 px-2 py-0.5 text-[11px] font-semibold text-danger">
-            Atenção imediata
-          </span>
-        </div>
+    <div className="flex flex-col gap-4 rounded-2xl bg-slate-950 p-4 text-slate-100 sm:p-5">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
+        <KpiTile
+          rotulo="Total de missões"
+          valor={String(total)}
+          detalhe="Volume registrado"
+        />
+        <KpiTile
+          rotulo="Taxa de conclusão"
+          valor={`${taxaConclusaoGlobal}%`}
+          detalhe={`${concluidasGlobal} de ${total} entregues`}
+          cor="#10B981"
+          anelPercentual={taxaConclusaoGlobal}
+        />
+        <KpiTile
+          rotulo="Em produção"
+          valor={String(emAndamentoGlobal)}
+          detalhe="Missões em andamento"
+          cor="#F97316"
+          anelPercentual={total > 0 ? Math.round((emAndamentoGlobal / total) * 100) : 0}
+        />
+        <KpiTile
+          rotulo="Ajustes / risco"
+          valor={String(emRiscoGlobal)}
+          detalhe={emRiscoGlobal > 0 ? "Atenção imediata" : "Nada em retrabalho"}
+          cor={emRiscoGlobal > 0 ? "#F43F5E" : "#64748b"}
+          alerta={emRiscoGlobal > 0}
+        />
       </div>
 
-      {/* Carga por pessoa + Missões por status, lado a lado */}
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-sans text-sm font-bold tracking-wide text-slate-800">
-              Carga por pessoa
-            </h2>
-            <span className="text-xs font-medium text-slate-400">Missões ativas</span>
-          </div>
-          {cargaPorPessoa.length === 0 ? (
-            <p className="text-sm text-muted">Nenhuma missão ativa no momento.</p>
+      {/* Donut de status + carga empilhada */}
+      <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
+        <CardPainel titulo="Missões por status" legenda="Distribuição atual">
+          {total === 0 ? (
+            <p className="text-sm text-slate-500">Nenhuma missão registrada.</p>
           ) : (
-            <div className="space-y-4">
-              {cargaPorPessoa.map(({ nome, qtd, sobrecarregada }) => (
-                <div key={nome} className="space-y-1">
-                  <div className="flex items-center justify-between text-xs font-semibold text-slate-700">
-                    <div className="flex items-center gap-2">
-                      <span
-                        className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[10px] font-bold ${corResponsavel(
-                          nome
-                        )}`}
-                      >
-                        {iniciais(nome)}
-                      </span>
-                      <span className="truncate">{nome}</span>
-                    </div>
-                    <span className="flex shrink-0 items-center gap-2">
-                      {sobrecarregada && (
-                        <span className="rounded-full bg-danger/10 px-1.5 py-0.5 text-[10px] font-semibold text-danger">
-                          sobrecarregada
-                        </span>
-                      )}
-                      <span className="font-bold text-slate-900">{qtd}</span>
-                    </span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${
-                        sobrecarregada ? "bg-danger" : "bg-brand"
-                      }`}
-                      style={{ width: `${maiorCarga > 0 ? Math.round((qtd / maiorCarga) * 100) : 0}%` }}
-                    />
-                  </div>
+            <div className="flex flex-col items-center gap-4 sm:flex-row">
+              <div className="relative h-[180px] w-[180px] shrink-0">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={statusComVolume}
+                      dataKey="qtd"
+                      nameKey="status"
+                      innerRadius={58}
+                      outerRadius={86}
+                      paddingAngle={2}
+                      stroke="none"
+                      isAnimationActive={false}
+                    >
+                      {statusComVolume.map((s) => (
+                        <Cell key={s.status} fill={s.cor} />
+                      ))}
+                    </Pie>
+                    <Tooltip content={TooltipEscuro} />
+                  </PieChart>
+                </ResponsiveContainer>
+                <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center">
+                  <span className="text-2xl font-bold tabular-nums text-white">{total}</span>
+                  <span className="text-[10px] uppercase tracking-wider text-slate-500">
+                    missões
+                  </span>
                 </div>
-              ))}
+              </div>
+              <div className="min-w-0 flex-1">
+                <LegendaStatus
+                  itens={statusComVolume.map((s) => ({
+                    rotulo: s.status,
+                    cor: s.cor,
+                    valor: s.qtd,
+                    pct: s.pct,
+                  }))}
+                />
+                {statusZerados.length > 0 && (
+                  <p className="mt-3 border-t border-slate-800 pt-2 text-[11px] leading-relaxed text-slate-600">
+                    Sem volume: {statusZerados.map((s) => s.status).join(" · ")}
+                  </p>
+                )}
+              </div>
             </div>
           )}
-        </div>
+        </CardPainel>
 
-        <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="font-sans text-sm font-bold tracking-wide text-slate-800">
-              Missões por status
-            </h2>
-            <span className="text-xs font-medium text-slate-400">Volume &amp; funil</span>
-          </div>
-          <div className="space-y-3">
-            {STATUSES.map((status) => {
-              const qtd = tarefas.filter((t) => t.status === status).length;
-              const pct = total > 0 ? Math.round((qtd / total) * 100) : 0;
-              return (
-                <div key={status} className="space-y-1">
-                  <div className="flex justify-between text-xs font-semibold text-slate-600">
-                    <span>{status}</span>
-                    <span className="text-slate-900">
-                      {qtd} <span className="font-normal text-slate-400">({pct}%)</span>
-                    </span>
-                  </div>
-                  <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
-                    <div
-                      className={`h-full rounded-full transition-all duration-300 ${corBarraStatus(
-                        status
-                      )}`}
-                      style={{ width: `${pct}%` }}
+        <CardPainel titulo="Carga por pessoa" legenda="Missões ativas por status">
+          {carga.length === 0 ? (
+            <p className="text-sm text-slate-500">Nenhuma missão ativa no momento.</p>
+          ) : (
+            <div className="min-w-0">
+              <ResponsiveContainer width="100%" height={Math.max(140, carga.length * 44)}>
+                <BarChart data={cargaEmpilhada} layout="vertical" margin={{ left: 4, right: 16 }}>
+                  <XAxis type="number" hide allowDecimals={false} />
+                  <YAxis
+                    type="category"
+                    dataKey="nome"
+                    width={96}
+                    tick={{ fontSize: 11, fill: "#94a3b8" }}
+                    axisLine={false}
+                    tickLine={false}
+                  />
+                  <Tooltip content={TooltipEscuro} cursor={{ fill: "#1e293b80" }} />
+                  {statusAtivosComVolume.map((s, i) => (
+                    <Bar
+                      key={s}
+                      dataKey={s}
+                      stackId="carga"
+                      fill={corGraficoEscuro(s)}
+                      barSize={18}
+                      isAnimationActive={false}
+                      radius={
+                        i === statusAtivosComVolume.length - 1 ? [0, 4, 4, 0] : [0, 0, 0, 0]
+                      }
                     />
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+                  ))}
+                </BarChart>
+              </ResponsiveContainer>
+              <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-slate-800 pt-2">
+                {statusAtivosComVolume.map((s) => (
+                  <span key={s} className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                    <span
+                      className="h-2 w-2 rounded-sm"
+                      style={{ backgroundColor: corGraficoEscuro(s) }}
+                    />
+                    {s}
+                  </span>
+                ))}
+              </div>
+              <div className="mt-3 space-y-1.5">
+                {carga
+                  .filter((c) => c.sobrecarregada)
+                  .map((c) => (
+                    <p key={c.nome} className="flex items-center gap-2 text-[11px] text-rose-400">
+                      <span
+                        className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[9px] font-bold ${corResponsavel(
+                          c.nome
+                        )}`}
+                      >
+                        {iniciais(c.nome)}
+                      </span>
+                      {c.nome} está acima da média do time ({c.qtd} ativas)
+                    </p>
+                  ))}
+              </div>
+            </div>
+          )}
+        </CardPainel>
       </div>
 
-      {/* Relatório detalhado — por cliente ou por colaborador */}
-      <div className="rounded-xl border border-slate-200/80 bg-white p-5 shadow-sm">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <h2 className="font-sans text-base font-bold text-slate-900">
-            Relatório por {visao === "cliente" ? "cliente" : "colaborador"}
-          </h2>
+      {/* Concentração por cliente */}
+      <CardPainel
+        titulo="Concentração por cliente"
+        legenda={
+          clienteLider ? `${clienteLider.name} = ${pctClienteLider}% das missões` : undefined
+        }
+      >
+        {porCliente.length === 0 ? (
+          <p className="text-sm text-slate-500">Nenhum cliente com missões.</p>
+        ) : (
+          <div className="min-w-0">
+            <ResponsiveContainer width="100%" height={150}>
+              <Treemap
+                data={porCliente}
+                dataKey="size"
+                nameKey="name"
+                stroke="#0f172a"
+                nodeGap={2}
+                isAnimationActive={false}
+              >
+                <Tooltip content={TooltipEscuro} />
+              </Treemap>
+            </ResponsiveContainer>
+            <ul className="mt-3 flex flex-wrap gap-x-4 gap-y-1 border-t border-slate-800 pt-2">
+              {porCliente.map((c) => (
+                <li key={c.name} className="flex items-center gap-1.5 text-[11px] text-slate-400">
+                  <span
+                    className="h-2 w-2 shrink-0 rounded-sm"
+                    style={{ backgroundColor: c.fill }}
+                  />
+                  <span className="text-slate-300">{c.name}</span>
+                  <span className="tabular-nums text-slate-500">
+                    {c.size} · {c.horas}h
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </CardPainel>
 
+      {/* Relatório detalhado */}
+      <CardPainel>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="font-sans text-sm font-bold text-white">
+            Relatório por {visao === "cliente" ? "cliente" : "colaborador"}
+          </h3>
           <div className="flex flex-wrap items-center gap-2">
-            <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
-              <button
-                type="button"
-                aria-pressed={visao === "cliente"}
-                onClick={() => setVisao("cliente")}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                  visao === "cliente"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                🏢 Por cliente
-              </button>
-              <button
-                type="button"
-                aria-pressed={visao === "colaborador"}
-                onClick={() => setVisao("colaborador")}
-                className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
-                  visao === "colaborador"
-                    ? "bg-white text-slate-900 shadow-sm"
-                    : "text-slate-500 hover:text-slate-700"
-                }`}
-              >
-                👤 Por colaborador
-              </button>
+            <div className="inline-flex rounded-lg border border-slate-700 bg-slate-800 p-1">
+              {(["cliente", "colaborador"] as const).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  aria-pressed={visao === v}
+                  onClick={() => setVisao(v)}
+                  className={`rounded-md px-3 py-1.5 text-xs font-semibold transition ${
+                    visao === v
+                      ? "bg-slate-950 text-white shadow-sm"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  {v === "cliente" ? "🏢 Por cliente" : "👤 Por colaborador"}
+                </button>
+              ))}
             </div>
 
             {visao === "cliente" ? (
               <select
                 value={clienteId}
                 onChange={(e) => setClienteId(e.target.value)}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                className={classeSelect}
               >
                 <option value="">Selecione um cliente...</option>
                 {clientes.map((c) => (
@@ -235,7 +354,7 @@ export function AreaPerformance({ tarefas }: AreaPerformanceProps) {
               <select
                 value={colaboradorNome}
                 onChange={(e) => setColaboradorNome(e.target.value)}
-                className="h-9 rounded-lg border border-slate-200 bg-white px-3 text-xs font-semibold text-slate-700 outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                className={classeSelect}
               >
                 <option value="">Selecione um colaborador...</option>
                 {colaboradores.map((nome) => (
@@ -249,18 +368,18 @@ export function AreaPerformance({ tarefas }: AreaPerformanceProps) {
         </div>
 
         {visao === "cliente" && !clienteSelecionado && (
-          <p className="mt-3 text-sm text-slate-500">
+          <p className="mt-3 text-sm text-slate-400">
             Escolha um cliente para ver o que foi feito, o que falta, esforço estimado e quem
             esteve envolvido.
           </p>
         )}
         {visao === "colaborador" && !colaboradorNome && (
-          <p className="mt-3 text-sm text-slate-500">
-            Escolha um colaborador para auditar capacidade produtiva, horas dedicadas, entregas e
-            possíveis gargalos individuais.
+          <p className="mt-3 text-sm text-slate-400">
+            Escolha um colaborador para ver entregas, confiabilidade e carga — sempre comparado
+            com a média do time.
           </p>
         )}
-      </div>
+      </CardPainel>
 
       {visao === "cliente" && clienteSelecionado && (
         <RelatorioCliente clienteNome={clienteSelecionado.nome} tarefas={tarefasDoCliente} />
@@ -273,7 +392,7 @@ export function AreaPerformance({ tarefas }: AreaPerformanceProps) {
         />
       )}
 
-      <p className="rounded-xl border border-dashed border-slate-200 bg-white px-4 py-6 text-center text-sm text-slate-500">
+      <p className="rounded-xl border border-dashed border-slate-800 px-4 py-4 text-center text-xs text-slate-500">
         Custo por atividade e rentabilidade em R$ chegam quando tivermos valor de hora por pessoa e
         apontamento de horas reais.
       </p>

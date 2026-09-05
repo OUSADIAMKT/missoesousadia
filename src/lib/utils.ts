@@ -120,6 +120,42 @@ export function corBarraStatusFill(status: Status): string {
   return FILL_BARRA_STATUS[status];
 }
 
+// Paleta para os gráficos do painel escuro da Performance. Os tokens de marca
+// não servem aqui: --accent-green (#1a3c2e) e --danger (#b3261e) somem sobre
+// grafite, e --brand-dark (#0d0d0d) fica invisível. São valores hex (não classes)
+// porque recharts pinta SVG via prop `fill`. Só o painel escuro usa isto —
+// corStatus/corBarraStatus seguem servindo Kanban, Hoje e Projetos, que são claros.
+const CORES_GRAFICO_ESCURO: Record<Status, string> = {
+  "A Fazer": "#94A3B8",
+  "Em Andamento": "#F97316",
+  "Em Revisão": "#FBBF24",
+  "Aguardando Cliente": "#818CF8",
+  "Ajustes Solicitados": "#F43F5E",
+  "Aprovado": "#34D399",
+  "Concluído": "#10B981",
+};
+
+export function corGraficoEscuro(status: Status): string {
+  return CORES_GRAFICO_ESCURO[status];
+}
+
+// Sequência para gráficos sem semântica de status (ex.: treemap de clientes),
+// na mesma família de tons do painel escuro.
+const SEQUENCIA_GRAFICO_ESCURO = [
+  "#F97316",
+  "#38BDF8",
+  "#A78BFA",
+  "#FBBF24",
+  "#34D399",
+  "#FB7185",
+  "#60A5FA",
+  "#F472B6",
+];
+
+export function corSequencialEscura(indice: number): string {
+  return SEQUENCIA_GRAFICO_ESCURO[indice % SEQUENCIA_GRAFICO_ESCURO.length];
+}
+
 // Prioridade sobe em intensidade: neutro → dourado → laranja de marca → vermelho.
 const CORES_PRIORIDADE: Record<Prioridade, string> = {
   Baixa: "bg-surface-alt text-muted border-border",
