@@ -54,6 +54,7 @@ export interface TarefaRow {
   prioridade: string;
   complexidade: string;
   horas_estimadas: number | null;
+  custo_execucao: number | null;
   status: string;
   quem: string;
   historico_status?: HistoricoStatusRow[] | null;
@@ -122,6 +123,7 @@ export function tarefaFromRow(row: TarefaRow): Tarefa {
     prioridade: row.prioridade as Prioridade,
     complexidade: row.complexidade as Complexidade,
     horasEstimadas: row.horas_estimadas ?? undefined,
+    custoExecucao: row.custo_execucao ?? undefined,
     status: row.status as Status,
     quem: row.quem,
     bloqueios: (row.bloqueios ?? []).map(bloqueioFromRow),

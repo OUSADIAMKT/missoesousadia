@@ -17,6 +17,7 @@ import {
   ROTULO_VINCULO,
   STATUSES,
   STATUSES_CONCLUIDOS,
+  type Cliente,
   type TarefaComContexto,
   type Usuario,
 } from "@/lib/types";
@@ -31,6 +32,7 @@ import {
   calcularCargaPorPessoa,
   custoPorEntregaNoMes,
   formatMes,
+  lucroPorClienteNoMes,
   mesesComEntrega,
 } from "@/lib/performance-metrics";
 import { CardPainel, KpiTile, LegendaStatus, TooltipEscuro } from "./painel/PainelUI";
@@ -44,9 +46,18 @@ interface AreaPerformanceProps {
   // Só para o custo por entrega: é de `usuarios` que vêm vínculo e custo
   // mensal. As demais métricas seguem derivando tudo das próprias missões.
   usuarios: Usuario[];
+  // Lista completa de clientes, não só os que têm missão: um cliente que pagou
+  // e não recebeu nenhuma entrega no mês é justamente o que precisa aparecer.
+  // Nome diferente do `clientes` derivado das missões, logo abaixo, que
+  // alimenta o seletor do relatório detalhado.
+  clientesCadastrados: Cliente[];
 }
 
-export function AreaPerformance({ tarefas, usuarios }: AreaPerformanceProps) {
+export function AreaPerformance({
+  tarefas,
+  usuarios,
+  clientesCadastrados,
+}: AreaPerformanceProps) {
   const total = tarefas.length;
 
   const concluidasGlobal = tarefas.filter((t) => STATUSES_CONCLUIDOS.includes(t.status)).length;
@@ -138,6 +149,10 @@ export function AreaPerformance({ tarefas, usuarios }: AreaPerformanceProps) {
     [tarefas, usuarios, mesCusto]
   );
   const custoFixoTotal = custosPorEntrega.reduce((soma, c) => soma + c.custoMensal, 0);
+  const lucro = useMemo(
+    () => lucroPorClienteNoMes(tarefas, clientesCadastrados, usuarios, mesCusto),
+    [tarefas, clientesCadastrados, usuarios, mesCusto]
+  );
 
   const [visao, setVisao] = useState<VisaoRelatorio>("cliente");
   const [clienteId, setClienteId] = useState("");
@@ -434,6 +449,94 @@ export function AreaPerformance({ tarefas, usuarios }: AreaPerformanceProps) {
               Quem é pago por projeto não entra aqui — o custo dessa pessoa é por entrega, e ainda
               não tem onde ser lançado.
             </p>
+          </div>
+        )}
+      </CardPainel>
+
+      {/* Lucro por cliente — margem de contribuição, mesmo mês do card acima */}
+      <CardPainel>
+        <div className="mb-4">
+          <div className="flex flex-wrap items-baseline justify-between gap-2">
+            <h3 className="font-sans text-xs font-bold uppercase tracking-wider text-slate-300">
+              Lucro por cliente
+            </h3>
+            <span className="text-[11px] font-medium text-slate-500">
+              Margem de contribuição · {formatMes(mesCusto)}
+            </span>
+          </div>
+          <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+            Receita mensal menos os custos diretos do mês: o pacote fixo rateado pelas entregas
+            mais o que foi pago por missão. Não desconta o tempo de quem não emite nota, então
+            não é o lucro final — é o quanto o cliente paga além do que custa atender.
+          </p>
+        </div>
+
+        {lucro.porCliente.length === 0 ? (
+          <p className="text-sm text-slate-500">Nenhum cliente cadastrado.</p>
+        ) : (
+          <div className="space-y-2">
+            {lucro.porCliente.map((c) => {
+              const negativa = c.margem !== null && c.margem < 0;
+              return (
+                <div
+                  key={c.clienteId}
+                  className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
+                    negativa
+                      ? "border-rose-500/40 bg-rose-500/5"
+                      : "border-slate-800 bg-slate-950/60"
+                  }`}
+                >
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-white">
+                      {c.nome}
+                    </span>
+                    <span className="block text-[11px] text-slate-500">
+                      {c.receita !== null ? `${formatBRL(c.receita)}/mês` : "Sem valor mensal"} ·{" "}
+                      {c.entregas} {c.entregas === 1 ? "entrega" : "entregas"} ·{" "}
+                      {formatBRL(c.custoTotal)} de custo
+                    </span>
+                  </span>
+                  <span className="shrink-0 text-right">
+                    {c.margem === null ? (
+                      <span className="block text-[11px] text-slate-500">
+                        Cadastre o valor mensal em Projetos
+                      </span>
+                    ) : (
+                      <>
+                        <span
+                          className={`block text-xl font-bold tabular-nums ${
+                            negativa ? "text-rose-400" : "text-emerald-400"
+                          }`}
+                        >
+                          {formatBRL(c.margem)}
+                        </span>
+                        <span className="block text-[11px] text-slate-500">
+                          {negativa ? "prejuízo" : "margem"}
+                          {c.margemPercentual !== null ? ` · ${c.margemPercentual}%` : ""}
+                        </span>
+                      </>
+                    )}
+                  </span>
+                </div>
+              );
+            })}
+
+            {(lucro.custoOcioso > 0 || lucro.custoSemCliente > 0) && (
+              <div className="space-y-1 border-t border-slate-800 pt-2">
+                {lucro.custoOcioso > 0 && (
+                  <p className="text-[11px] leading-relaxed text-amber-400">
+                    ⚠ {formatBRL(lucro.custoOcioso)} de custo fixo não entraram em nenhum cliente:
+                    quem recebe esse valor não concluiu nenhuma missão no mês.
+                  </p>
+                )}
+                {lucro.custoSemCliente > 0 && (
+                  <p className="text-[11px] leading-relaxed text-amber-400">
+                    ⚠ {formatBRL(lucro.custoSemCliente)} vieram de entregas sem cliente definido e
+                    ficaram fora do rateio.
+                  </p>
+                )}
+              </div>
+            )}
           </div>
         )}
       </CardPainel>

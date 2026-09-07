@@ -40,6 +40,7 @@ interface FormState {
   prioridade: Prioridade;
   complexidade: Complexidade;
   horasEstimadas: string;
+  custoExecucao: string;
   status: Status;
   quem: string;
 }
@@ -59,6 +60,7 @@ function valorInicial(usuarios: Usuario[]): FormState {
     prioridade: "Normal",
     complexidade: "Simples",
     horasEstimadas: "",
+    custoExecucao: "",
     status: "A Fazer",
     quem: usuarios[0]?.nome ?? "",
   };
@@ -75,6 +77,7 @@ function valorDeEdicao(tarefa: TarefaComContexto): FormState {
     prioridade: tarefa.prioridade,
     complexidade: tarefa.complexidade,
     horasEstimadas: tarefa.horasEstimadas ? String(tarefa.horasEstimadas) : "",
+    custoExecucao: tarefa.custoExecucao !== undefined ? String(tarefa.custoExecucao) : "",
     status: tarefa.status,
     quem: tarefa.quem,
   };
@@ -130,6 +133,12 @@ export function TarefaForm({
     (p) => clientes.find((c) => c.id === p.clienteId)?.nome === dados.clienteNome
   );
 
+  // Custo por missão só aparece para quem é pago por entrega. Para quem tem
+  // custo fixo mensal, o valor já é rateado pelas entregas do mês — lançar de
+  // novo aqui contaria a mesma despesa duas vezes.
+  const responsavel = usuarios.find((u) => u.nome === dados.quem);
+  const pagoPorProjeto = responsavel?.vinculo === "por_projeto";
+
   async function submeter(e: React.FormEvent) {
     e.preventDefault();
     if (!dados.titulo.trim() || !dados.clienteNome.trim() || !dados.prazoEntrega) return;
@@ -143,6 +152,10 @@ export function TarefaForm({
       prioridade: dados.prioridade,
       complexidade: dados.complexidade,
       horasEstimadas: dados.horasEstimadas ? Number(dados.horasEstimadas) : undefined,
+      // Trocar o responsável para alguém de custo fixo limpa o valor: senão ele
+      // continuaria contando no relatório sem aparecer mais no formulário.
+      custoExecucao:
+        pagoPorProjeto && dados.custoExecucao ? Number(dados.custoExecucao) : undefined,
       status: dados.status,
       quem: dados.quem,
       bloqueios: tarefaEmEdicao?.bloqueios ?? [],
@@ -374,6 +387,27 @@ export function TarefaForm({
               className="w-32 rounded-sm border border-border bg-background px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
           </div>
+
+          {pagoPorProjeto && (
+            <div>
+              <label className="mb-1 block text-sm font-medium text-foreground">
+                Custo desta missão <span className="font-normal text-muted">(opcional)</span>
+              </label>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={dados.custoExecucao}
+                onChange={(e) => setDados((d) => ({ ...d, custoExecucao: e.target.value }))}
+                placeholder="Ex: 800"
+                className="w-32 rounded-sm border border-border bg-background px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+              <p className="mt-1 text-xs text-muted">
+                Quanto será pago a {dados.quem} por esta entrega. Entra no lucro do cliente
+                quando a missão for concluída.
+              </p>
+            </div>
+          )}
 
           {tarefaEmEdicao && (
             <div className="border-t border-border pt-4">

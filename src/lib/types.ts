@@ -107,6 +107,10 @@ export interface Tarefa {
   prioridade: Prioridade;
   complexidade: Complexidade;
   horasEstimadas?: number;
+  // R$ combinados com quem executa — só para responsável `por_projeto`. Quem
+  // tem custo fixo mensal é rateado pelas entregas do mês (ver
+  // `lucroPorClienteNoMes` em performance-metrics.ts), não lançado aqui.
+  custoExecucao?: number;
   status: Status;
   quem: string;
   bloqueios: Bloqueio[];

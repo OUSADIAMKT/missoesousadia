@@ -269,7 +269,11 @@ export default function Home() {
       )}
 
       {pronto && areaAtiva === "performance" && (
-        <AreaPerformance tarefas={tarefasComContexto} usuarios={usuarios} />
+        <AreaPerformance
+          tarefas={tarefasComContexto}
+          usuarios={usuarios}
+          clientesCadastrados={estrutura.clientes}
+        />
       )}
 
       <TarefaForm

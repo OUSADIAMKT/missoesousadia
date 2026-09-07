@@ -507,3 +507,134 @@ export function formatMes(mesISO: string): string {
   });
   return rotulo.charAt(0).toUpperCase() + rotulo.slice(1);
 }
+
+// ---------------------------------------------------------------------------
+// LUCRO POR CLIENTE (Fase 2) — margem de contribuição, não lucro final.
+//
+// Junta as três fontes de dinheiro que o sistema já conhece:
+//   receita        `clientes.valorMensal`
+//   custo direto   `tarefas.custoExecucao` (quem é pago por entrega)
+//   custo rateado  o custo fixo mensal de cada pessoa/fornecedor, dividido
+//                  igualmente entre as missões que ela concluiu no mês e
+//                  atribuído ao cliente de cada uma
+//
+// É margem de CONTRIBUIÇÃO porque não desconta o tempo de quem não emite nota
+// (dono e sócio sem pró-labore lançado): diz se o cliente paga os custos
+// diretos dele, não se paga a operação inteira. O nome importa — lido como
+// "lucro", o número parece maior do que é.
+//
+// Dois custos ficam de fora do rateio de propósito, e são devolvidos à parte em
+// vez de sumirem dentro da margem de alguém:
+//   `custoOcioso`     custo fixo de quem não entregou nada no mês
+//   `custoSemCliente` custo de entregas sem cliente resolvido
+// ---------------------------------------------------------------------------
+
+export interface ClienteComReceita {
+  id: string;
+  nome: string;
+  valorMensal?: number;
+}
+
+export interface LucroCliente {
+  clienteId: string;
+  nome: string;
+  receita: number | null; // null = sem valor mensal cadastrado
+  custoDireto: number;
+  custoRateado: number;
+  custoTotal: number;
+  margem: number | null; // null sempre que a receita for null
+  margemPercentual: number | null;
+  entregas: number;
+}
+
+export interface LucroNoMes {
+  porCliente: LucroCliente[];
+  custoOcioso: number;
+  custoSemCliente: number;
+}
+
+function arredondar(valor: number): number {
+  return Math.round(valor * 100) / 100;
+}
+
+function somarNoMapa(mapa: Map<string, number>, chave: string, valor: number): void {
+  mapa.set(chave, (mapa.get(chave) ?? 0) + valor);
+}
+
+export function lucroPorClienteNoMes(
+  tarefas: TarefaComContexto[],
+  clientes: ClienteComReceita[],
+  pessoas: PessoaComCusto[],
+  mesISO: string
+): LucroNoMes {
+  const entregas = tarefas.filter((t) => mesDeConclusao(t) === mesISO);
+
+  const custoRateado = new Map<string, number>();
+  const custoDireto = new Map<string, number>();
+  const entregasPorCliente = new Map<string, number>();
+  let custoOcioso = 0;
+  let custoSemCliente = 0;
+
+  // Rateio do custo fixo: dividido igualmente entre as entregas do mês daquela
+  // pessoa. Divisão por entrega (e não por horas) é o que os dados sustentam
+  // hoje — quando houver horas reais, esta é a linha a trocar.
+  for (const p of pessoas) {
+    if (p.vinculo === null || !VINCULOS_CUSTO_FIXO.includes(p.vinculo)) continue;
+    if (p.custoMensal === undefined || p.custoMensal <= 0) continue;
+    const suasEntregas = entregas.filter((t) => t.quem === p.nome);
+    if (suasEntregas.length === 0) {
+      custoOcioso += p.custoMensal;
+      continue;
+    }
+    const fatia = p.custoMensal / suasEntregas.length;
+    for (const t of suasEntregas) {
+      if (!t.cliente) custoSemCliente += fatia;
+      else somarNoMapa(custoRateado, t.cliente.id, fatia);
+    }
+  }
+
+  for (const t of entregas) {
+    if (t.cliente) somarNoMapa(entregasPorCliente, t.cliente.id, 1);
+    const custo = t.custoExecucao ?? 0;
+    if (custo <= 0) continue;
+    if (!t.cliente) custoSemCliente += custo;
+    else somarNoMapa(custoDireto, t.cliente.id, custo);
+  }
+
+  const porCliente = clientes.map((c) => {
+    const direto = arredondar(custoDireto.get(c.id) ?? 0);
+    const rateado = arredondar(custoRateado.get(c.id) ?? 0);
+    const custoTotal = arredondar(direto + rateado);
+    const receita = c.valorMensal ?? null;
+    const margem = receita === null ? null : arredondar(receita - custoTotal);
+    return {
+      clienteId: c.id,
+      nome: c.nome,
+      receita,
+      custoDireto: direto,
+      custoRateado: rateado,
+      custoTotal,
+      margem,
+      margemPercentual:
+        receita !== null && receita > 0 && margem !== null
+          ? Math.round((margem / receita) * 100)
+          : null,
+      entregas: entregasPorCliente.get(c.id) ?? 0,
+    };
+  });
+
+  // Pior margem primeiro: a lista existe para decidir o que renegociar, e quem
+  // não tem receita cadastrada não é comparável — vai para o fim.
+  porCliente.sort((a, b) => {
+    if (a.margem === null && b.margem === null) return a.nome.localeCompare(b.nome);
+    if (a.margem === null) return 1;
+    if (b.margem === null) return -1;
+    return a.margem - b.margem;
+  });
+
+  return {
+    porCliente,
+    custoOcioso: arredondar(custoOcioso),
+    custoSemCliente: arredondar(custoSemCliente),
+  };
+}

@@ -1,16 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Status, TarefaComContexto, Vinculo } from "./types.ts";
+import type { Cliente, Status, TarefaComContexto, Vinculo } from "./types.ts";
 import {
   custoPorEntregaNoMes,
   formatMes,
+  lucroPorClienteNoMes,
   mesesComEntrega,
   type PessoaComCusto,
 } from "./performance-metrics.ts";
 
-// Uma missão mínima: só o que `custoPorEntregaNoMes` olha (quem, status e a
-// data da última mudança de status, de onde sai a data de conclusão).
-function missao(quem: string, status: Status, concluidaEm: string): TarefaComContexto {
+// Uma missão mínima: quem, status e a data da última mudança de status (de onde
+// sai a data de conclusão), mais o cliente e o custo direto que o cálculo de
+// lucro precisa.
+function missao(
+  quem: string,
+  status: Status,
+  concluidaEm: string,
+  extras: { cliente?: Cliente; custoExecucao?: number } = {}
+): TarefaComContexto {
   return {
     id: `${quem}-${concluidaEm}-${status}`,
     titulo: "Missão",
@@ -23,12 +30,13 @@ function missao(quem: string, status: Status, concluidaEm: string): TarefaComCon
     complexidade: "Simples",
     status,
     quem,
+    custoExecucao: extras.custoExecucao,
     bloqueios: [],
     historico: [
       { id: "h1", statusAnterior: "Em Andamento", statusNovo: status, usuario: quem, data: `${concluidaEm}T12:00:00.000Z` },
     ],
     projeto: undefined,
-    cliente: undefined,
+    cliente: extras.cliente,
   };
 }
 
@@ -118,4 +126,118 @@ test("formatMes devolve o mês por extenso com inicial maiúscula", () => {
 
 test("formatMes devolve a entrada crua se não for um mês válido", () => {
   assert.equal(formatMes("sem-mes"), "sem-mes");
+});
+
+// --- lucroPorClienteNoMes ---------------------------------------------------
+
+const ekilibre: Cliente = { id: "c1", nome: "Ekilibre", valorMensal: 3000 };
+const flix: Cliente = { id: "c2", nome: "FLIX", valorMensal: 1000 };
+
+test("lucroPorClienteNoMes rateia o custo fixo entre as entregas do mês", () => {
+  // Pacote de R$ 3.000 e 3 entregas: 2 para a Ekilibre, 1 para a FLIX.
+  const tarefas = [
+    missao("Produtora", "Concluído", "2026-09-05", { cliente: ekilibre }),
+    missao("Produtora", "Aprovado", "2026-09-12", { cliente: ekilibre }),
+    missao("Produtora", "Concluído", "2026-09-18", { cliente: flix }),
+  ];
+  const { porCliente } = lucroPorClienteNoMes(
+    tarefas,
+    [ekilibre, flix],
+    [pessoa("Produtora", "fornecedor", 3000)],
+    "2026-09"
+  );
+  const porNome = Object.fromEntries(porCliente.map((c) => [c.nome, c]));
+  assert.equal(porNome.Ekilibre.custoRateado, 2000);
+  assert.equal(porNome.Ekilibre.margem, 1000);
+  assert.equal(porNome.FLIX.custoRateado, 1000);
+  assert.equal(porNome.FLIX.margem, 0);
+});
+
+test("lucroPorClienteNoMes soma o custo direto de quem é pago por entrega", () => {
+  const tarefas = [
+    missao("Eliseu", "Concluído", "2026-09-08", { cliente: ekilibre, custoExecucao: 800 }),
+    missao("Eliseu", "Concluído", "2026-09-22", { cliente: ekilibre, custoExecucao: 700 }),
+  ];
+  const [linha] = lucroPorClienteNoMes(
+    tarefas,
+    [ekilibre],
+    [pessoa("Eliseu", "por_projeto")],
+    "2026-09"
+  ).porCliente;
+  assert.equal(linha.custoDireto, 1500);
+  assert.equal(linha.custoRateado, 0);
+  assert.equal(linha.margem, 1500);
+  assert.equal(linha.margemPercentual, 50);
+});
+
+// O caso que decide contrato: o cliente custa mais do que paga.
+test("lucroPorClienteNoMes devolve margem negativa quando o cliente dá prejuízo", () => {
+  const tarefas = [missao("Eliseu", "Concluído", "2026-09-08", { cliente: flix, custoExecucao: 1800 })];
+  const [linha] = lucroPorClienteNoMes(
+    tarefas,
+    [flix],
+    [pessoa("Eliseu", "por_projeto")],
+    "2026-09"
+  ).porCliente;
+  assert.equal(linha.margem, -800);
+  assert.equal(linha.margemPercentual, -80);
+});
+
+test("lucroPorClienteNoMes ordena da pior margem para a melhor", () => {
+  const tarefas = [missao("Eliseu", "Concluído", "2026-09-08", { cliente: flix, custoExecucao: 1800 })];
+  const nomes = lucroPorClienteNoMes(tarefas, [ekilibre, flix], [], "2026-09").porCliente.map(
+    (c) => c.nome
+  );
+  assert.deepEqual(nomes, ["FLIX", "Ekilibre"]);
+});
+
+// Custo fixo de quem não entregou nada não pode ser diluído entre os clientes:
+// isso faria a margem de todo mundo parecer melhor do que é.
+test("lucroPorClienteNoMes separa o custo fixo de quem não entregou nada", () => {
+  const tarefas = [missao("Produtora", "Concluído", "2026-09-05", { cliente: ekilibre })];
+  const resultado = lucroPorClienteNoMes(
+    tarefas,
+    [ekilibre],
+    [pessoa("Produtora", "fornecedor", 3000), pessoa("Parado", "clt", 2000)],
+    "2026-09"
+  );
+  assert.equal(resultado.custoOcioso, 2000);
+  assert.equal(resultado.porCliente[0].custoRateado, 3000);
+});
+
+test("lucroPorClienteNoMes separa o custo de entrega sem cliente", () => {
+  const tarefas = [
+    missao("Produtora", "Concluído", "2026-09-05", { cliente: ekilibre }),
+    missao("Produtora", "Concluído", "2026-09-06"), // sem cliente resolvido
+  ];
+  const resultado = lucroPorClienteNoMes(
+    tarefas,
+    [ekilibre],
+    [pessoa("Produtora", "fornecedor", 3000)],
+    "2026-09"
+  );
+  assert.equal(resultado.custoSemCliente, 1500);
+  assert.equal(resultado.porCliente[0].custoRateado, 1500);
+});
+
+test("lucroPorClienteNoMes deixa a margem nula para cliente sem valor mensal", () => {
+  const semValor: Cliente = { id: "c3", nome: "Sem contrato" };
+  const [linha] = lucroPorClienteNoMes([], [semValor], [], "2026-09").porCliente;
+  assert.equal(linha.receita, null);
+  assert.equal(linha.margem, null);
+  assert.equal(linha.margemPercentual, null);
+});
+
+test("lucroPorClienteNoMes inclui cliente que não teve nenhuma entrega no mês", () => {
+  const [linha] = lucroPorClienteNoMes([], [ekilibre], [], "2026-09").porCliente;
+  assert.equal(linha.entregas, 0);
+  assert.equal(linha.custoTotal, 0);
+  assert.equal(linha.margem, 3000);
+});
+
+test("lucroPorClienteNoMes ignora missão concluída em outro mês", () => {
+  const tarefas = [missao("Eliseu", "Concluído", "2026-08-30", { cliente: ekilibre, custoExecucao: 900 })];
+  const [linha] = lucroPorClienteNoMes(tarefas, [ekilibre], [], "2026-09").porCliente;
+  assert.equal(linha.custoDireto, 0);
+  assert.equal(linha.entregas, 0);
 });

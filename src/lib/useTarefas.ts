@@ -62,6 +62,7 @@ export function useTarefas() {
         prioridade: nova.prioridade,
         complexidade: nova.complexidade,
         horas_estimadas: nova.horasEstimadas ?? null,
+        custo_execucao: nova.custoExecucao ?? null,
         status: nova.status,
         quem: nova.quem,
       });
@@ -88,6 +89,10 @@ export function useTarefas() {
       if (dados.complexidade !== undefined) patch.complexidade = dados.complexidade;
       if (dados.horasEstimadas !== undefined)
         patch.horas_estimadas = dados.horasEstimadas ?? null;
+      // `custoExecucao` é sempre enviado pelo formulário (undefined quando o
+      // responsável não é pago por projeto), então este `!== undefined` nunca
+      // barra uma limpeza intencional — quem limpa manda `null` explícito.
+      if ("custoExecucao" in dados) patch.custo_execucao = dados.custoExecucao ?? null;
       if (dados.status !== undefined) patch.status = dados.status;
       if (dados.quem !== undefined) patch.quem = dados.quem;
 

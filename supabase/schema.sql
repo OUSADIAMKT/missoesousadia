@@ -109,6 +109,10 @@ create table tarefas (
   horas_estimadas numeric,
   status text not null default 'A Fazer',
   quem text not null,
+  -- R$ combinados com quem executa esta missão. Só faz sentido para responsável
+  -- de vínculo `por_projeto`: quem tem custo fixo mensal é rateado pelas
+  -- entregas do mês, não lançado missão a missão.
+  custo_execucao numeric check (custo_execucao >= 0),
   criado_em timestamptz not null default now(),
   constraint tarefas_status_valido check (
     status in ('A Fazer','Em Andamento','Em Revisão','Aguardando Cliente','Ajustes Solicitados','Aprovado','Concluído')
