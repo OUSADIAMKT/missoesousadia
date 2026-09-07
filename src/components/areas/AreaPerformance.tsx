@@ -13,9 +13,26 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { STATUSES, STATUSES_CONCLUIDOS, type TarefaComContexto } from "@/lib/types";
-import { corGraficoEscuro, corResponsavel, corSequencialEscura, iniciais } from "@/lib/utils";
-import { calcularCargaPorPessoa } from "@/lib/performance-metrics";
+import {
+  ROTULO_VINCULO,
+  STATUSES,
+  STATUSES_CONCLUIDOS,
+  type TarefaComContexto,
+  type Usuario,
+} from "@/lib/types";
+import {
+  corGraficoEscuro,
+  corResponsavel,
+  corSequencialEscura,
+  formatBRL,
+  iniciais,
+} from "@/lib/utils";
+import {
+  calcularCargaPorPessoa,
+  custoPorEntregaNoMes,
+  formatMes,
+  mesesComEntrega,
+} from "@/lib/performance-metrics";
 import { CardPainel, KpiTile, LegendaStatus, TooltipEscuro } from "./painel/PainelUI";
 import { EspelhoColaborador } from "./EspelhoColaborador";
 import { RelatorioCliente } from "./RelatorioCliente";
@@ -24,9 +41,12 @@ type VisaoRelatorio = "cliente" | "colaborador";
 
 interface AreaPerformanceProps {
   tarefas: TarefaComContexto[];
+  // Só para o custo por entrega: é de `usuarios` que vêm vínculo e custo
+  // mensal. As demais métricas seguem derivando tudo das próprias missões.
+  usuarios: Usuario[];
 }
 
-export function AreaPerformance({ tarefas }: AreaPerformanceProps) {
+export function AreaPerformance({ tarefas, usuarios }: AreaPerformanceProps) {
   const total = tarefas.length;
 
   const concluidasGlobal = tarefas.filter((t) => STATUSES_CONCLUIDOS.includes(t.status)).length;
@@ -105,6 +125,19 @@ export function AreaPerformance({ tarefas }: AreaPerformanceProps) {
     const nomes = new Set(tarefas.map((t) => t.quem).filter(Boolean));
     return Array.from(nomes).sort((a, b) => a.localeCompare(b));
   }, [tarefas]);
+
+  // Custo por entrega: divide o custo fixo mensal de cada pessoa/fornecedor
+  // pelas missões que ela concluiu no mês escolhido. `mesesComEntrega` sempre
+  // inclui o mês corrente, então `meses[0]` nunca é undefined e o seletor não
+  // precisa de estado inicial calculado por efeito.
+  const meses = useMemo(() => mesesComEntrega(tarefas), [tarefas]);
+  const [mesEscolhido, setMesEscolhido] = useState("");
+  const mesCusto = meses.includes(mesEscolhido) ? mesEscolhido : meses[0];
+  const custosPorEntrega = useMemo(
+    () => custoPorEntregaNoMes(tarefas, usuarios, mesCusto),
+    [tarefas, usuarios, mesCusto]
+  );
+  const custoFixoTotal = custosPorEntrega.reduce((soma, c) => soma + c.custoMensal, 0);
 
   const [visao, setVisao] = useState<VisaoRelatorio>("cliente");
   const [clienteId, setClienteId] = useState("");
@@ -312,6 +345,99 @@ export function AreaPerformance({ tarefas }: AreaPerformanceProps) {
         )}
       </CardPainel>
 
+      {/* Custo por entrega — transforma um custo fixo abstrato em preço unitário */}
+      <CardPainel>
+        <div className="mb-4 flex flex-wrap items-end justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="font-sans text-xs font-bold uppercase tracking-wider text-slate-300">
+              Custo por entrega
+            </h3>
+            <p className="mt-1 text-[11px] leading-relaxed text-slate-500">
+              Custo fixo do mês dividido pelas missões concluídas — é o número que diz se um
+              pacote fechado está valendo a pena.
+            </p>
+          </div>
+          <select
+            value={mesCusto}
+            onChange={(e) => setMesEscolhido(e.target.value)}
+            aria-label="Mês de referência do custo"
+            className={classeSelect}
+          >
+            {meses.map((m) => (
+              <option key={m} value={m}>
+                {formatMes(m)}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        {custosPorEntrega.length === 0 ? (
+          <p className="text-sm leading-relaxed text-slate-500">
+            Nenhum custo fixo cadastrado ainda. Clique no seu nome no topo da página para abrir{" "}
+            <strong className="font-semibold text-slate-300">Time e custos</strong> e informe o
+            vínculo e o valor mensal de cada fornecedor ou contratado.
+          </p>
+        ) : (
+          <div className="space-y-2">
+            {custosPorEntrega.map((c) => (
+              <div
+                key={c.nome}
+                className={`flex flex-wrap items-center justify-between gap-3 rounded-lg border px-3 py-2.5 ${
+                  c.custoPorEntrega === null
+                    ? "border-rose-500/40 bg-rose-500/5"
+                    : "border-slate-800 bg-slate-950/60"
+                }`}
+              >
+                <span className="flex min-w-0 items-center gap-2">
+                  <span
+                    className={`grid h-7 w-7 shrink-0 place-items-center rounded-full border text-[10px] font-bold ${corResponsavel(
+                      c.nome
+                    )}`}
+                  >
+                    {iniciais(c.nome)}
+                  </span>
+                  <span className="min-w-0">
+                    <span className="block truncate text-sm font-semibold text-white">
+                      {c.nome}
+                    </span>
+                    <span className="block text-[11px] text-slate-500">
+                      {ROTULO_VINCULO[c.vinculo]} · {formatBRL(c.custoMensal)}/mês
+                    </span>
+                  </span>
+                </span>
+                <span className="shrink-0 text-right">
+                  {c.custoPorEntrega === null ? (
+                    <>
+                      <span className="block text-sm font-bold text-rose-400">
+                        Nenhuma entrega
+                      </span>
+                      <span className="block text-[11px] text-rose-400/80">
+                        {formatBRL(c.custoMensal)} correram sem contrapartida
+                      </span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="block text-xl font-bold tabular-nums text-white">
+                        {formatBRL(c.custoPorEntrega)}
+                      </span>
+                      <span className="block text-[11px] text-slate-500">
+                        por entrega · {c.entregas} {c.entregas === 1 ? "missão" : "missões"}
+                      </span>
+                    </>
+                  )}
+                </span>
+              </div>
+            ))}
+            <p className="border-t border-slate-800 pt-2 text-[11px] leading-relaxed text-slate-500">
+              Custo fixo total no mês:{" "}
+              <span className="font-semibold text-slate-300">{formatBRL(custoFixoTotal)}</span>.
+              Quem é pago por projeto não entra aqui — o custo dessa pessoa é por entrega, e ainda
+              não tem onde ser lançado.
+            </p>
+          </div>
+        )}
+      </CardPainel>
+
       {/* Relatório detalhado */}
       <CardPainel>
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -393,8 +519,8 @@ export function AreaPerformance({ tarefas }: AreaPerformanceProps) {
       )}
 
       <p className="rounded-xl border border-dashed border-slate-800 px-4 py-4 text-center text-xs text-slate-500">
-        Custo por atividade e rentabilidade em R$ chegam quando tivermos valor de hora por pessoa e
-        apontamento de horas reais.
+        Falta para fechar a conta de lucro: o valor combinado por projeto de quem é pago por
+        entrega, as horas reais de cada missão e a receita mensal por cliente.
       </p>
     </div>
   );

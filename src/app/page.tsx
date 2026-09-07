@@ -40,6 +40,7 @@ export default function Home() {
     souAdmin,
     pronto: usuariosProntos,
     adicionarUsuario,
+    atualizarUsuario,
     removerUsuario,
     sair,
   } = useUsuarios();
@@ -142,7 +143,7 @@ export default function Home() {
         <h1 className="font-display text-2xl font-bold text-brand-dark">Sem acesso</h1>
         <p className="text-sm text-muted">
           O e-mail <strong>{emailLogado}</strong> ainda não está cadastrado nesta Central de
-          Operações. Peça para alguém do time te adicionar em &quot;Acesso do time&quot;.
+          Operações. Peça para alguém do time te adicionar em &quot;Time e custos&quot;.
         </p>
         <button
           onClick={sair}
@@ -267,7 +268,9 @@ export default function Home() {
         />
       )}
 
-      {pronto && areaAtiva === "performance" && <AreaPerformance tarefas={tarefasComContexto} />}
+      {pronto && areaAtiva === "performance" && (
+        <AreaPerformance tarefas={tarefasComContexto} usuarios={usuarios} />
+      )}
 
       <TarefaForm
         aberto={formAberto}
@@ -291,6 +294,7 @@ export default function Home() {
         souAdmin={souAdmin}
         onFechar={() => setUsuariosAberto(false)}
         onAdicionar={adicionarUsuario}
+        onAtualizar={atualizarUsuario}
         onRemover={removerUsuario}
         onSair={sair}
         onNotificarErro={notificarErro}

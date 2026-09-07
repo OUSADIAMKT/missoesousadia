@@ -1,7 +1,9 @@
 import {
   STATUSES_CONCLUIDOS,
+  VINCULOS_CUSTO_FIXO,
   type Status,
   type TarefaComContexto,
+  type Vinculo,
 } from "./types.ts";
 import { dataDeConclusao, isAtrasada, isProximaDoPrazo } from "./utils.ts";
 
@@ -407,4 +409,101 @@ export function retornoFinanceiroPorColaborador(
     custoAlocado: Math.round(custoAlocado),
     margem: Math.round(receitaAlocada - custoAlocado),
   };
+}
+
+// ---------------------------------------------------------------------------
+// CUSTO POR ENTREGA (Fase 1) — disponível, diferente do Tier 2/3 acima.
+//
+// Responde "o pacote fechado vale a pena?". Um custo fixo (o pacote da produtora
+// terceirizada, um salário, um pró-labore) corre igual todo mês independente do
+// volume entregue; dividir esse custo pelas entregas do mês transforma um valor
+// abstrato em preço unitário — e é o único jeito de comparar um fornecedor de
+// pacote com alguém pago por projeto.
+//
+// Só precisa de dois dados que a Fase 0 acabou de cadastrar (`vinculo` e
+// `custoMensal` em `usuarios`) mais o que o sistema já registra: quem concluiu
+// o quê e quando. Nada de apontamento de horas.
+// ---------------------------------------------------------------------------
+
+export interface PessoaComCusto {
+  nome: string;
+  vinculo: Vinculo | null;
+  custoMensal?: number;
+}
+
+export interface CustoDeEntregaNoMes {
+  nome: string;
+  vinculo: Vinculo;
+  custoMensal: number;
+  entregas: number;
+  // `null` quando o mês não teve nenhuma entrega: o custo correu e não comprou
+  // nada. Não é zero nem infinito — é uma condição diferente, e a UI destaca.
+  custoPorEntrega: number | null;
+}
+
+// Mês de uma missão concluída, no formato "YYYY-MM". Usa a mesma
+// `dataDeConclusao` do resto do módulo (última mudança de status registrada).
+function mesDeConclusao(tarefa: TarefaComContexto): string | null {
+  if (!STATUSES_CONCLUIDOS.includes(tarefa.status)) return null;
+  return dataDeConclusao(tarefa)?.slice(0, 7) ?? null;
+}
+
+export function custoPorEntregaNoMes(
+  tarefas: TarefaComContexto[],
+  pessoas: PessoaComCusto[],
+  mesISO: string
+): CustoDeEntregaNoMes[] {
+  const entregasPorPessoa = new Map<string, number>();
+  for (const t of tarefas) {
+    if (mesDeConclusao(t) !== mesISO) continue;
+    entregasPorPessoa.set(t.quem, (entregasPorPessoa.get(t.quem) ?? 0) + 1);
+  }
+
+  return pessoas
+    .filter(
+      (p): p is PessoaComCusto & { vinculo: Vinculo; custoMensal: number } =>
+        // Sem vínculo classificado ou sem custo lançado, a pessoa fica de fora
+        // em vez de entrar zerada — mesma regra do resto do módulo. Custo zero
+        // (sócia sem pró-labore) também sai: ela não tem custo em dinheiro, e
+        // um "R$ 0,00 por entrega" só polui o relatório.
+        p.vinculo !== null &&
+        VINCULOS_CUSTO_FIXO.includes(p.vinculo) &&
+        p.custoMensal !== undefined &&
+        p.custoMensal > 0
+    )
+    .map((p) => {
+      const entregas = entregasPorPessoa.get(p.nome) ?? 0;
+      return {
+        nome: p.nome,
+        vinculo: p.vinculo,
+        custoMensal: p.custoMensal,
+        entregas,
+        custoPorEntrega:
+          entregas > 0 ? Math.round((p.custoMensal / entregas) * 100) / 100 : null,
+      };
+    })
+    .sort((a, b) => b.custoMensal - a.custoMensal);
+}
+
+// Meses que têm alguma entrega, mais recente primeiro, sempre incluindo o mês
+// corrente — senão um mês ainda sem nenhuma conclusão sumiria do seletor,
+// escondendo justamente o caso que mais importa (custo correndo, nada saindo).
+export function mesesComEntrega(tarefas: TarefaComContexto[]): string[] {
+  const meses = new Set<string>([hojeISO().slice(0, 7)]);
+  for (const t of tarefas) {
+    const mes = mesDeConclusao(t);
+    if (mes) meses.add(mes);
+  }
+  return Array.from(meses).sort((a, b) => b.localeCompare(a));
+}
+
+export function formatMes(mesISO: string): string {
+  const [ano, mes] = mesISO.split("-").map(Number);
+  if (!ano || !mes) return mesISO;
+  const rotulo = new Date(Date.UTC(ano, mes - 1, 1)).toLocaleDateString("pt-BR", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+  return rotulo.charAt(0).toUpperCase() + rotulo.slice(1);
 }

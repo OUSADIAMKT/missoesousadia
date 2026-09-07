@@ -9,6 +9,7 @@ import type {
   Status,
   Tarefa,
   Usuario,
+  Vinculo,
 } from "@/lib/types";
 
 // Linhas cruas como vêm do Supabase (snake_case) — só os campos que lemos.
@@ -62,8 +63,11 @@ export interface TarefaRow {
 export interface UsuarioRow {
   id: string;
   nome: string;
-  email: string;
+  email: string | null;
   papel: string;
+  vinculo: string | null;
+  custo_mensal: number | null;
+  horas_mensais: number | null;
 }
 
 export function clienteFromRow(row: ClienteRow): Cliente {
@@ -75,7 +79,15 @@ export function projetoFromRow(row: ProjetoRow): Projeto {
 }
 
 export function usuarioFromRow(row: UsuarioRow): Usuario {
-  return { id: row.id, nome: row.nome, email: row.email, papel: row.papel as Papel };
+  return {
+    id: row.id,
+    nome: row.nome,
+    email: row.email,
+    papel: row.papel as Papel,
+    vinculo: (row.vinculo as Vinculo | null) ?? null,
+    custoMensal: row.custo_mensal ?? undefined,
+    horasMensais: row.horas_mensais ?? undefined,
+  };
 }
 
 function historicoFromRow(row: HistoricoStatusRow): HistoricoStatus {

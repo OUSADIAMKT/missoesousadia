@@ -11,16 +11,33 @@
 create extension if not exists "pgcrypto";
 
 -- ---------------------------------------------------------------------------
--- USUÁRIOS — também é a lista de e-mails com permissão de entrar (ver RLS
--- mais abaixo), então vem antes das outras tabelas e das funções de acesso.
+-- USUÁRIOS — responde duas perguntas diferentes: "quem executa missões" (toda
+-- linha) e "quem entra no sistema" (só as linhas com e-mail, ver RLS mais
+-- abaixo). Vem antes das outras tabelas e das funções de acesso.
 -- ---------------------------------------------------------------------------
 
+-- `email` nulo = a pessoa executa missões mas NÃO entra no sistema (é o caso
+-- da produtora de vídeo terceirizada): uma linha sem e-mail nunca casa com
+-- `auth.jwt() ->> 'email'`, então a RLS a barra sozinha, sem regra extra.
+-- O índice único continua valendo — o Postgres permite vários NULLs.
+--
+-- `vinculo` diz COMO o custo daquela pessoa se calcula, que é uma conta
+-- diferente para cada forma de contratação (ver src/lib/types.ts). Nulo de
+-- propósito enquanto ninguém classificou: o sistema prefere "não computável"
+-- a um número inventado.
 create table usuarios (
   id uuid primary key default gen_random_uuid(),
   nome text not null,
-  email text not null unique,
+  email text unique,
   papel text not null default 'membro' check (papel in ('admin', 'membro')),
-  criado_em timestamptz not null default now()
+  vinculo text check (vinculo in ('dono', 'socio', 'por_projeto', 'fornecedor', 'clt')),
+  -- R$/mês: pacote fechado (fornecedor), salário (clt) ou pró-labore
+  -- (dono/socio). Não se aplica a `por_projeto`, cujo custo é por entrega.
+  custo_mensal numeric check (custo_mensal >= 0),
+  horas_mensais numeric check (horas_mensais > 0),
+  criado_em timestamptz not null default now(),
+  -- Admin não pode se trancar do lado de fora: quem administra precisa entrar.
+  constraint usuarios_admin_precisa_de_email check (papel <> 'admin' or email is not null)
 );
 
 -- Nome (na tabela `usuarios`) de quem está fazendo a requisição, a partir do

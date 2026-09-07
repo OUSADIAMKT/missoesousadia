@@ -29,11 +29,43 @@ export type Complexidade = (typeof COMPLEXIDADES)[number];
 
 export type Papel = "admin" | "membro";
 
+// COMO o custo de uma pessoa se calcula — cada vínculo é uma conta diferente,
+// não um rótulo de RH. É o que permite somar gente paga de formas incompatíveis
+// no mesmo relatório de rentabilidade:
+//   dono/socio  → o custo é o pró-labore (pode ser zero); o que pesa de verdade
+//                 é o tempo, que não tem nota fiscal
+//   por_projeto → custo variável, valor combinado por entrega
+//   fornecedor  → pacote fechado no período, independente do volume entregue
+//   clt         → salário mensal
+export const VINCULOS = ["dono", "socio", "por_projeto", "fornecedor", "clt"] as const;
+
+export type Vinculo = (typeof VINCULOS)[number];
+
+export const ROTULO_VINCULO: Record<Vinculo, string> = {
+  dono: "Dono",
+  socio: "Sócio",
+  por_projeto: "Por projeto",
+  fornecedor: "Fornecedor (pacote)",
+  clt: "CLT",
+};
+
+// Vínculos em que `custoMensal` faz sentido — um valor fixo que corre todo mês
+// independente do volume. `por_projeto` fica de fora de propósito: o custo dele
+// é por entrega, não mensal.
+export const VINCULOS_CUSTO_FIXO: Vinculo[] = ["dono", "socio", "fornecedor", "clt"];
+
 export interface Usuario {
   id: string;
   nome: string;
-  email: string;
+  // `null` = executa missões mas não entra no sistema (ex.: a produtora de
+  // vídeo terceirizada). Ver a explicação da RLS em supabase/schema.sql.
+  email: string | null;
   papel: Papel;
+  // `null` enquanto ninguém classificou — o custo dessa pessoa fica fora dos
+  // relatórios em vez de virar um número inventado.
+  vinculo: Vinculo | null;
+  custoMensal?: number;
+  horasMensais?: number;
 }
 
 export interface HistoricoStatus {

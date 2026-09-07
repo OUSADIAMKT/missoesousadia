@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import { createClient } from "./supabase/client";
 import { usuarioFromRow, type UsuarioRow } from "./supabase/mappers";
-import type { Usuario } from "./types";
+import type { Usuario, Vinculo } from "./types";
 
 // Não existe mais "escolher quem eu sou": a identidade vem do login Google.
-// `usuarios` agora é a lista de e-mails com acesso — gerenciar essa lista é
-// uma ação de admin (adicionar/remover colega), não "trocar de personagem".
+// `usuarios` é a lista de QUEM EXECUTA missões; quem tem e-mail nessa lista
+// também tem acesso ao sistema. Gerenciá-la é uma ação de admin (adicionar
+// colega, cadastrar fornecedor, definir custo), não "trocar de personagem".
 export function useUsuarios() {
   const [usuarios, setUsuarios] = useState<Usuario[]>([]);
   const [emailLogado, setEmailLogado] = useState<string | null>(null);
@@ -50,8 +51,11 @@ export function useUsuarios() {
     };
   }, [buscar]);
 
+  // Os dois lados precisam existir de verdade: um executor sem e-mail (ex.: a
+  // produtora terceirizada) não pode casar com ninguém logado, e um `?? ""` dos
+  // dois lados faria exatamente isso.
   const usuarioLogado = usuarios.find(
-    (u) => u.email.toLowerCase() === (emailLogado ?? "").toLowerCase()
+    (u) => !!u.email && !!emailLogado && u.email.toLowerCase() === emailLogado.toLowerCase()
   );
   const usuarioAtual = usuarioLogado?.nome ?? "";
   // Logou com o Google mas o e-mail não está na lista de usuários permitidos.
@@ -60,17 +64,46 @@ export function useUsuarios() {
   // membro do time (ver RLS em supabase/schema.sql).
   const souAdmin = usuarioLogado?.papel === "admin";
 
+  // `email` vazio é permitido de propósito: cadastra quem executa missões sem
+  // ganhar login (a produtora de vídeo terceirizada). A linha entra no dropdown
+  // de "quem" e nos relatórios de custo, mas nunca casa com um login Google.
   const adicionarUsuario = useCallback(
-    async (nome: string, email: string) => {
+    async (nome: string, email: string, vinculo: Vinculo | null) => {
       const nomeLimpo = nome.trim();
       const emailLimpo = email.trim().toLowerCase();
-      if (!nomeLimpo || !emailLimpo) return false;
+      if (!nomeLimpo) return false;
       const supabase = createClient();
       const { error } = await supabase
         .from("usuarios")
-        .insert({ nome: nomeLimpo, email: emailLimpo });
+        .insert({ nome: nomeLimpo, email: emailLimpo || null, vinculo });
       if (error) {
-        console.error("Erro ao adicionar acesso:", error.message);
+        console.error("Erro ao adicionar pessoa:", error.message);
+        return false;
+      }
+      buscar();
+      return true;
+    },
+    [buscar]
+  );
+
+  // Vínculo e custo só existem para alimentar os relatórios financeiros — a RLS
+  // de `usuarios` já restringe qualquer UPDATE a admin (ver schema.sql).
+  const atualizarUsuario = useCallback(
+    async (
+      id: string,
+      campos: { vinculo: Vinculo | null; custoMensal?: number; horasMensais?: number }
+    ) => {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("usuarios")
+        .update({
+          vinculo: campos.vinculo,
+          custo_mensal: campos.custoMensal ?? null,
+          horas_mensais: campos.horasMensais ?? null,
+        })
+        .eq("id", id);
+      if (error) {
+        console.error("Erro ao atualizar vínculo/custo:", error.message);
         return false;
       }
       buscar();
@@ -110,6 +143,7 @@ export function useUsuarios() {
     souAdmin,
     pronto,
     adicionarUsuario,
+    atualizarUsuario,
     removerUsuario,
     sair,
   };
