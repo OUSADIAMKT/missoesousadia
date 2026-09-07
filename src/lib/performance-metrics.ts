@@ -551,6 +551,14 @@ export interface LucroNoMes {
   porCliente: LucroCliente[];
   custoOcioso: number;
   custoSemCliente: number;
+  // Soma das margens conhecidas menos os dois custos que não couberam em
+  // nenhum cliente. É o bolo que sobra no mês — e, quando alguém do time é
+  // remunerado por divisão de resultado, é literalmente de onde sai o
+  // pagamento dessa pessoa.
+  resultado: number;
+  // Quantos clientes ficaram fora de `resultado` por não ter valor mensal
+  // cadastrado: com isso > 0, o resultado está subestimado, e a UI avisa.
+  clientesSemReceita: number;
 }
 
 function arredondar(valor: number): number {
@@ -632,9 +640,17 @@ export function lucroPorClienteNoMes(
     return a.margem - b.margem;
   });
 
+  const margensConhecidas = porCliente.filter((c) => c.margem !== null);
+  const resultado =
+    margensConhecidas.reduce((soma, c) => soma + (c.margem ?? 0), 0) -
+    custoOcioso -
+    custoSemCliente;
+
   return {
     porCliente,
     custoOcioso: arredondar(custoOcioso),
     custoSemCliente: arredondar(custoSemCliente),
+    resultado: arredondar(resultado),
+    clientesSemReceita: porCliente.length - margensConhecidas.length,
   };
 }

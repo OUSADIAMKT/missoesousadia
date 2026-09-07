@@ -241,3 +241,27 @@ test("lucroPorClienteNoMes ignora missão concluída em outro mês", () => {
   assert.equal(linha.custoDireto, 0);
   assert.equal(linha.entregas, 0);
 });
+
+test("lucroPorClienteNoMes soma o resultado do mês descontando o custo ocioso", () => {
+  // Ekilibre R$ 3.000 e FLIX R$ 1.000 de receita; R$ 1.500 pagos ao Eliseu na
+  // missão da Ekilibre; R$ 2.000 de custo fixo de quem não entregou nada.
+  const tarefas = [
+    missao("Eliseu", "Concluído", "2026-09-08", { cliente: ekilibre, custoExecucao: 1500 }),
+  ];
+  const resultado = lucroPorClienteNoMes(
+    tarefas,
+    [ekilibre, flix],
+    [pessoa("Eliseu", "por_projeto"), pessoa("Parado", "clt", 2000)],
+    "2026-09"
+  );
+  // (3000 - 1500) + (1000 - 0) - 2000 de custo ocioso
+  assert.equal(resultado.resultado, 500);
+  assert.equal(resultado.clientesSemReceita, 0);
+});
+
+test("lucroPorClienteNoMes conta quantos clientes ficaram fora do resultado", () => {
+  const semValor: Cliente = { id: "c3", nome: "Sem contrato" };
+  const resultado = lucroPorClienteNoMes([], [ekilibre, semValor], [], "2026-09");
+  assert.equal(resultado.resultado, 3000);
+  assert.equal(resultado.clientesSemReceita, 1);
+});

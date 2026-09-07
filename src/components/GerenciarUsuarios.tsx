@@ -255,7 +255,7 @@ export function GerenciarUsuarios({
                       </span>
                     </div>
 
-                    {u.custoMensal !== undefined && !editando && (
+                    {!editando && u.custoMensal !== undefined && (
                       <p className="mt-1.5 pl-8 text-xs text-muted">
                         {formatBRL(u.custoMensal)}/mês
                         {u.horasMensais
@@ -263,6 +263,17 @@ export function GerenciarUsuarios({
                           : ""}
                       </p>
                     )}
+                    {/* Sócio sem valor lançado não é cadastro incompleto: é
+                        remuneração por resultado. Sem esta linha, o campo vazio
+                        parece um dado faltando e alguém "conserta" pondo um
+                        número, o que inflaria o custo e derrubaria a margem. */}
+                    {!editando &&
+                      u.custoMensal === undefined &&
+                      (u.vinculo === "socio" || u.vinculo === "dono") && (
+                        <p className="mt-1.5 pl-8 text-xs text-muted">
+                          Remunerado por divisão de resultado — não entra como custo.
+                        </p>
+                      )}
 
                     {editando && (
                       <div className="mt-3 space-y-2 border-t border-border pt-3">
@@ -321,6 +332,13 @@ export function GerenciarUsuarios({
                                 ? `Custo por hora: ${formatBRL(custoHoraRascunho)}`
                                 : "Preencha os dois para ver o custo por hora."}
                             </p>
+                            {(rascunho.vinculo === "socio" || rascunho.vinculo === "dono") && (
+                              <p className="text-xs text-muted">
+                                Deixe em branco se a remuneração é por divisão de resultado: aí
+                                ela sai do bolo que sobra no fim do mês, não é um custo de
+                                atender o cliente.
+                              </p>
+                            )}
                           </>
                         ) : rascunho.vinculo === "por_projeto" ? (
                           <p className="text-xs text-muted">

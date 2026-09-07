@@ -521,6 +521,28 @@ export function AreaPerformance({
               );
             })}
 
+            <div className="flex flex-wrap items-baseline justify-between gap-2 border-t border-slate-800 pt-3">
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-400">
+                Resultado do mês
+              </span>
+              <span
+                className={`text-lg font-bold tabular-nums ${
+                  lucro.resultado < 0 ? "text-rose-400" : "text-emerald-400"
+                }`}
+              >
+                {formatBRL(lucro.resultado)}
+              </span>
+            </div>
+            <p className="text-[11px] leading-relaxed text-slate-500">
+              O que sobra depois dos custos diretos do mês — é deste valor que sai a remuneração
+              de quem é pago por divisão de resultado.
+              {lucro.clientesSemReceita > 0
+                ? ` Está subestimado: ${lucro.clientesSemReceita} cliente${
+                    lucro.clientesSemReceita === 1 ? "" : "s"
+                  } sem valor mensal cadastrado ficaram de fora.`
+                : ""}
+            </p>
+
             {(lucro.custoOcioso > 0 || lucro.custoSemCliente > 0) && (
               <div className="space-y-1 border-t border-slate-800 pt-2">
                 {lucro.custoOcioso > 0 && (
