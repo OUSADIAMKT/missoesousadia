@@ -10,7 +10,9 @@
 -- ser lançado — sem depender de apontamento de horas.
 -- ---------------------------------------------------------------------------
 
-alter table tarefas add column custo_execucao numeric check (custo_execucao >= 0);
+-- Seguro rodar de novo: `if not exists` não reclama se a coluna já estiver lá.
+alter table tarefas
+  add column if not exists custo_execucao numeric check (custo_execucao >= 0);
 
 comment on column tarefas.custo_execucao is
   'R$ combinados com quem executa esta missão. Só faz sentido para responsável de vínculo por_projeto — quem tem custo fixo mensal é rateado, não lançado missão a missão.';

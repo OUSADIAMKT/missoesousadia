@@ -31,13 +31,17 @@
 --    é ele dividido pelas missões que a pessoa concluiu no mês.
 -- ---------------------------------------------------------------------------
 
+-- Tudo abaixo pode ser rodado de novo sem quebrar nada: colando SQL à mão, é
+-- fácil perder a conta do que já foi aplicado, e um erro no meio do script
+-- deixaria a migration pela metade.
+
 alter table usuarios alter column email drop not null;
 
 alter table usuarios
-  add column vinculo text
+  add column if not exists vinculo text
     check (vinculo in ('dono', 'socio', 'por_projeto', 'fornecedor', 'clt')),
-  add column custo_mensal numeric check (custo_mensal >= 0),
-  add column horas_mensais numeric check (horas_mensais > 0);
+  add column if not exists custo_mensal numeric check (custo_mensal >= 0),
+  add column if not exists horas_mensais numeric check (horas_mensais > 0);
 
 comment on column usuarios.email is
   'Nulo = executa missões mas não entra no sistema (ex.: fornecedor terceirizado).';
@@ -49,6 +53,7 @@ comment on column usuarios.horas_mensais is
   'Horas disponíveis no mês — base do custo/hora.';
 
 -- Admin não pode se trancar do lado de fora: quem administra precisa de login.
+alter table usuarios drop constraint if exists usuarios_admin_precisa_de_email;
 alter table usuarios
   add constraint usuarios_admin_precisa_de_email
   check (papel <> 'admin' or email is not null);

@@ -261,8 +261,12 @@ alter publication supabase_realtime add table
 -- (dá pra editar direto na tabela `usuarios` pelo Table Editor do Supabase).
 -- ---------------------------------------------------------------------------
 
+-- TROQUE o e-mail abaixo pelo Gmail com que VOCÊ vai entrar. Se ele estiver
+-- errado, ninguém consegue logar: esta linha é a lista de acesso inicial, e
+-- só um admin pode adicionar os outros depois (pela tela "Time e custos").
 insert into usuarios (nome, email, papel) values
-  ('Admin', 'satoyiro@gmail.com', 'admin');
+  ('Admin', 'satoyiro@gmail.com', 'admin')
+on conflict (email) do nothing;
 
 -- Mesmos clientes sugeridos e o projeto "Geral" que hoje vivem em
 -- src/lib/types.ts (CLIENTES_SUGERIDOS) e src/lib/useEstrutura.ts.
