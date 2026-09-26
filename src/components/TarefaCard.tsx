@@ -99,6 +99,19 @@ export function TarefaCard({
         <p className="mb-2 line-clamp-2 text-xs text-muted">{tarefa.descricao}</p>
       )}
 
+      {tarefa.tags.length > 0 && (
+        <div className="mb-2 flex flex-wrap gap-1">
+          {tarefa.tags.map((tag) => (
+            <span
+              key={tag}
+              className="rounded-full border border-border bg-surface-alt px-1.5 py-0.5 text-[10px] font-medium text-muted"
+            >
+              #{tag}
+            </span>
+          ))}
+        </div>
+      )}
+
       <div className="flex items-start justify-between gap-1">
         <div className="flex min-w-0 flex-wrap items-center gap-1">
           {fase && (

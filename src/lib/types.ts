@@ -113,6 +113,10 @@ export interface Tarefa {
   custoExecucao?: number;
   status: Status;
   quem: string;
+  // Etiquetas livres definidas pelo time (ex.: "post", "vídeo", "anúncio") —
+  // sem lista fixa, digitadas na hora. Sempre um array, nunca undefined —
+  // simplifica UI e filtro (ver `tags` em supabase/schema.sql).
+  tags: string[];
   bloqueios: Bloqueio[];
   historico: HistoricoStatus[];
 }

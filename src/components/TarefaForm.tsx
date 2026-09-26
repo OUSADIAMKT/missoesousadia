@@ -43,6 +43,7 @@ interface FormState {
   custoExecucao: string;
   status: Status;
   quem: string;
+  tags: string[];
 }
 
 function hoje(): string {
@@ -63,6 +64,7 @@ function valorInicial(usuarios: Usuario[]): FormState {
     custoExecucao: "",
     status: "A Fazer",
     quem: usuarios[0]?.nome ?? "",
+    tags: [],
   };
 }
 
@@ -80,6 +82,7 @@ function valorDeEdicao(tarefa: TarefaComContexto): FormState {
     custoExecucao: tarefa.custoExecucao !== undefined ? String(tarefa.custoExecucao) : "",
     status: tarefa.status,
     quem: tarefa.quem,
+    tags: tarefa.tags,
   };
 }
 
@@ -98,6 +101,7 @@ export function TarefaForm({
 }: TarefaFormProps) {
   const [dados, setDados] = useState<FormState>(() => valorInicial(usuarios));
   const [novoBloqueio, setNovoBloqueio] = useState("");
+  const [novaTag, setNovaTag] = useState("");
   const [erroSalvar, setErroSalvar] = useState("");
   const tituloRef = useRef<HTMLInputElement>(null);
 
@@ -113,6 +117,7 @@ export function TarefaForm({
       setDados(valorInicial(usuarios));
     }
     setNovoBloqueio("");
+    setNovaTag("");
     setErroSalvar("");
     if (aberto) tituloRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -158,6 +163,7 @@ export function TarefaForm({
         pagoPorProjeto && dados.custoExecucao ? Number(dados.custoExecucao) : undefined,
       status: dados.status,
       quem: dados.quem,
+      tags: dados.tags,
       bloqueios: tarefaEmEdicao?.bloqueios ?? [],
     });
     if (sucesso) {
@@ -165,6 +171,18 @@ export function TarefaForm({
     } else {
       setErroSalvar("Não foi possível salvar. Tente novamente.");
     }
+  }
+
+  function adicionarTag(e: React.FormEvent) {
+    e.preventDefault();
+    const limpa = novaTag.trim();
+    if (!limpa) return;
+    setDados((d) => (d.tags.includes(limpa) ? d : { ...d, tags: [...d.tags, limpa] }));
+    setNovaTag("");
+  }
+
+  function removerTag(tag: string) {
+    setDados((d) => ({ ...d, tags: d.tags.filter((t) => t !== tag) }));
   }
 
   function adicionarBloqueio(e: React.FormEvent) {
@@ -297,6 +315,50 @@ export function TarefaForm({
               placeholder="Detalhes da missão..."
               className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
+          </div>
+
+          <div>
+            <label className="mb-1 block text-sm font-medium text-foreground">
+              Tags <span className="font-normal text-muted">(opcional)</span>
+            </label>
+            {dados.tags.length > 0 && (
+              <ul className="mb-2 flex flex-wrap gap-1.5">
+                {dados.tags.map((tag) => (
+                  <li
+                    key={tag}
+                    className="flex items-center gap-1 rounded-full border border-border bg-accent-soft px-2 py-0.5 text-xs font-medium text-brand-dark"
+                  >
+                    {tag}
+                    <button
+                      type="button"
+                      onClick={() => removerTag(tag)}
+                      aria-label={`Remover tag ${tag}`}
+                      className="text-brand-dark/60 hover:text-danger"
+                    >
+                      ✕
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+            <div className="flex gap-2">
+              <input
+                value={novaTag}
+                onChange={(e) => setNovaTag(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") adicionarTag(e);
+                }}
+                placeholder="Ex: post, vídeo, anúncio..."
+                className="flex-1 rounded-sm border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+              />
+              <button
+                type="button"
+                onClick={adicionarTag}
+                className="rounded-sm border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-background"
+              >
+                Adicionar
+              </button>
+            </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">

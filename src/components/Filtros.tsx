@@ -7,15 +7,18 @@ interface FiltrosProps {
   projetos: Projeto[];
   usuarios: Usuario[];
   usuarioAtual: string;
+  tagsDisponiveis: string[];
   clienteId: string;
   projetoId: string;
   quem: string;
   prioridade: string;
+  tag: string;
   busca: string;
   onClienteIdChange: (v: string) => void;
   onProjetoIdChange: (v: string) => void;
   onQuemChange: (v: string) => void;
   onPrioridadeChange: (v: string) => void;
+  onTagChange: (v: string) => void;
   onBuscaChange: (v: string) => void;
 }
 
@@ -24,15 +27,18 @@ export function Filtros({
   projetos,
   usuarios,
   usuarioAtual,
+  tagsDisponiveis,
   clienteId,
   projetoId,
   quem,
   prioridade,
+  tag,
   busca,
   onClienteIdChange,
   onProjetoIdChange,
   onQuemChange,
   onPrioridadeChange,
+  onTagChange,
   onBuscaChange,
 }: FiltrosProps) {
   const projetosDoCliente = clienteId ? projetos.filter((p) => p.clienteId === clienteId) : projetos;
@@ -117,6 +123,21 @@ export function Filtros({
         ))}
       </select>
 
+      {tagsDisponiveis.length > 0 && (
+        <select
+          value={tag}
+          onChange={(e) => onTagChange(e.target.value)}
+          className="h-9 rounded-sm border border-border bg-surface px-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+        >
+          <option value="">Toda tag</option>
+          {tagsDisponiveis.map((t) => (
+            <option key={t} value={t}>
+              #{t}
+            </option>
+          ))}
+        </select>
+      )}
+
       {usuarioAtual && (
         <button
           type="button"
@@ -132,13 +153,14 @@ export function Filtros({
         </button>
       )}
 
-      {(clienteId || projetoId || quem || prioridade || busca) && (
+      {(clienteId || projetoId || quem || prioridade || tag || busca) && (
         <button
           onClick={() => {
             onClienteIdChange("");
             onProjetoIdChange("");
             onQuemChange("");
             onPrioridadeChange("");
+            onTagChange("");
             onBuscaChange("");
           }}
           className="text-sm font-medium text-muted hover:text-danger"

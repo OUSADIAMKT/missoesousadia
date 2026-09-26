@@ -65,6 +65,7 @@ export function useTarefas() {
         custo_execucao: nova.custoExecucao ?? null,
         status: nova.status,
         quem: nova.quem,
+        tags: nova.tags,
       });
       if (error) {
         console.error("Erro ao criar missão:", error.message);
@@ -95,6 +96,7 @@ export function useTarefas() {
       if ("custoExecucao" in dados) patch.custo_execucao = dados.custoExecucao ?? null;
       if (dados.status !== undefined) patch.status = dados.status;
       if (dados.quem !== undefined) patch.quem = dados.quem;
+      if (dados.tags !== undefined) patch.tags = dados.tags;
 
       const { error } = await supabase.from("tarefas").update(patch).eq("id", id);
       if (error) {

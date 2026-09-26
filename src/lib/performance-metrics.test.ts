@@ -31,6 +31,7 @@ function missao(
     status,
     quem,
     custoExecucao: extras.custoExecucao,
+    tags: [],
     bloqueios: [],
     historico: [
       { id: "h1", statusAnterior: "Em Andamento", statusNovo: status, usuario: quem, data: `${concluidaEm}T12:00:00.000Z` },

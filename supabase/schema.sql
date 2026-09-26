@@ -113,6 +113,9 @@ create table tarefas (
   -- de vínculo `por_projeto`: quem tem custo fixo mensal é rateado pelas
   -- entregas do mês, não lançado missão a missão.
   custo_execucao numeric check (custo_execucao >= 0),
+  -- Etiquetas livres definidas pelo time (ex.: post, vídeo, anúncio) — sem
+  -- lista fixa, digitadas na hora (ver migrations/003_tags.sql).
+  tags text[] not null default '{}',
   criado_em timestamptz not null default now(),
   constraint tarefas_status_valido check (
     status in ('A Fazer','Em Andamento','Em Revisão','Aguardando Cliente','Ajustes Solicitados','Aprovado','Concluído')

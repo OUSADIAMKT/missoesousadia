@@ -59,6 +59,7 @@ export default function Home() {
   const [projetoId, setProjetoId] = useState("");
   const [quem, setQuem] = useState("");
   const [prioridade, setPrioridade] = useState("");
+  const [tag, setTag] = useState("");
   const [busca, setBusca] = useState("");
 
   const tarefasComContexto = useMemo<TarefaComContexto[]>(() => {
@@ -71,12 +72,19 @@ export default function Home() {
     });
   }, [tarefas, estrutura.projetos, estrutura.clientes]);
 
+  const tagsDisponiveis = useMemo(() => {
+    const conjunto = new Set<string>();
+    for (const t of tarefasComContexto) for (const tg of t.tags) conjunto.add(tg);
+    return Array.from(conjunto).sort((a, b) => a.localeCompare(b));
+  }, [tarefasComContexto]);
+
   const tarefasFiltradas = useMemo(() => {
     return tarefasComContexto.filter((t) => {
       if (clienteId && t.cliente?.id !== clienteId) return false;
       if (projetoId && t.projetoId !== projetoId) return false;
       if (quem && t.quem !== quem) return false;
       if (prioridade && t.prioridade !== prioridade) return false;
+      if (tag && !t.tags.includes(tag)) return false;
       if (busca) {
         const alvo = busca.toLowerCase();
         const casouTitulo = t.titulo.toLowerCase().includes(alvo);
@@ -85,7 +93,7 @@ export default function Home() {
       }
       return true;
     });
-  }, [tarefasComContexto, clienteId, projetoId, quem, prioridade, busca]);
+  }, [tarefasComContexto, clienteId, projetoId, quem, prioridade, tag, busca]);
 
   const atrasadas = useMemo(
     () => tarefasComContexto.filter((t) => isAtrasada(t.prazoEntrega, t.status)).length,
@@ -243,15 +251,18 @@ export default function Home() {
           projetos={estrutura.projetos}
           usuarios={usuarios}
           usuarioAtual={usuarioAtual}
+          tagsDisponiveis={tagsDisponiveis}
           clienteId={clienteId}
           projetoId={projetoId}
           quem={quem}
           prioridade={prioridade}
+          tag={tag}
           busca={busca}
           onClienteIdChange={setClienteId}
           onProjetoIdChange={setProjetoId}
           onQuemChange={setQuem}
           onPrioridadeChange={setPrioridade}
+          onTagChange={setTag}
           onBuscaChange={setBusca}
           onSelecionar={abrirEdicao}
           onMoverStatus={moverStatus}

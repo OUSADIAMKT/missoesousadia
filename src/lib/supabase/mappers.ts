@@ -57,6 +57,7 @@ export interface TarefaRow {
   custo_execucao: number | null;
   status: string;
   quem: string;
+  tags: string[] | null;
   historico_status?: HistoricoStatusRow[] | null;
   bloqueios?: BloqueioRow[] | null;
 }
@@ -126,6 +127,7 @@ export function tarefaFromRow(row: TarefaRow): Tarefa {
     custoExecucao: row.custo_execucao ?? undefined,
     status: row.status as Status,
     quem: row.quem,
+    tags: row.tags ?? [],
     bloqueios: (row.bloqueios ?? []).map(bloqueioFromRow),
     historico: (row.historico_status ?? [])
       .map(historicoFromRow)
