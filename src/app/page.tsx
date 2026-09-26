@@ -77,7 +77,12 @@ export default function Home() {
       if (projetoId && t.projetoId !== projetoId) return false;
       if (quem && t.quem !== quem) return false;
       if (prioridade && t.prioridade !== prioridade) return false;
-      if (busca && !t.titulo.toLowerCase().includes(busca.toLowerCase())) return false;
+      if (busca) {
+        const alvo = busca.toLowerCase();
+        const casouTitulo = t.titulo.toLowerCase().includes(alvo);
+        const casouDescricao = t.descricao.toLowerCase().includes(alvo);
+        if (!casouTitulo && !casouDescricao) return false;
+      }
       return true;
     });
   }, [tarefasComContexto, clienteId, projetoId, quem, prioridade, busca]);

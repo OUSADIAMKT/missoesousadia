@@ -53,7 +53,7 @@ export function Filtros({
         <input
           value={busca}
           onChange={(e) => onBuscaChange(e.target.value)}
-          placeholder="Buscar por título..."
+          placeholder="Buscar por título ou descrição..."
           className="h-9 w-48 rounded-sm border border-border bg-surface pl-9 pr-3 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
         />
       </div>
