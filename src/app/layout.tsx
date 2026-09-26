@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Fraunces, JetBrains_Mono, Outfit } from "next/font/google";
 import "./globals.css";
 
@@ -24,6 +24,16 @@ export const metadata: Metadata = {
   title: "Missões da Ousadia — Central de Operações",
   description:
     "Central de operações da Ousadia Marketing: o que fazer agora, por cliente e projeto.",
+  applicationName: "Missões Ousadia",
+  appleWebApp: {
+    capable: true,
+    title: "Missões Ousadia",
+    statusBarStyle: "black-translucent",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#0d0d0d",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
