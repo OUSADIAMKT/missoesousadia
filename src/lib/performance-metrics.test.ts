@@ -35,6 +35,7 @@ function missao(
     bloqueios: [],
     anexos: [],
     comentarios: [],
+    apontamentos: [],
     historico: [
       { id: "h1", statusAnterior: "Em Andamento", statusNovo: status, usuario: quem, data: `${concluidaEm}T12:00:00.000Z` },
     ],

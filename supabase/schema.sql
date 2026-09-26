@@ -173,6 +173,20 @@ create table comentarios (
   criado_em timestamptz not null default now()
 );
 
+-- Apontamento manual de horas reais por missão — alimenta as métricas de
+-- produtividade real em performance-metrics.ts. `usuario` não é forçado pelo
+-- login (diferente de bloqueios/anexos/comentários): segue o mesmo padrão do
+-- campo "quem" da missão, porque quem executou pode não ter e-mail cadastrado
+-- (ex.: a produtora de vídeo terceirizada) — outra pessoa do time lança por ela.
+create table apontamentos (
+  id uuid primary key default gen_random_uuid(),
+  tarefa_id uuid not null references tarefas(id) on delete cascade,
+  usuario text not null,
+  horas numeric not null check (horas > 0),
+  data date not null default current_date,
+  criado_em timestamptz not null default now()
+);
+
 create unique index clientes_nome_unico on clientes (lower(nome));
 create index on projetos (cliente_id);
 create unique index projetos_nome_unico on projetos (cliente_id, lower(nome));
@@ -181,6 +195,7 @@ create index on historico_status (tarefa_id);
 create index on bloqueios (tarefa_id);
 create index on anexos (tarefa_id);
 create index on comentarios (tarefa_id);
+create index on apontamentos (tarefa_id);
 
 -- ---------------------------------------------------------------------------
 -- HISTÓRICO DE STATUS: registrado automaticamente pelo banco (não pelo app),
@@ -286,6 +301,7 @@ alter table historico_status enable row level security;
 alter table bloqueios enable row level security;
 alter table anexos enable row level security;
 alter table comentarios enable row level security;
+alter table apontamentos enable row level security;
 
 create policy "time le usuarios" on usuarios
   for select using (is_team_member());
@@ -308,6 +324,8 @@ create policy "time acessa bloqueios" on bloqueios
 create policy "time acessa anexos" on anexos
   for all using (is_team_member()) with check (is_team_member());
 create policy "time acessa comentarios" on comentarios
+  for all using (is_team_member()) with check (is_team_member());
+create policy "time acessa apontamentos" on apontamentos
   for all using (is_team_member()) with check (is_team_member());
 
 -- ---------------------------------------------------------------------------
@@ -333,7 +351,8 @@ create policy "time remove anexos no storage" on storage.objects
 -- ---------------------------------------------------------------------------
 
 alter publication supabase_realtime add table
-  usuarios, clientes, projetos, tarefas, historico_status, bloqueios, anexos, comentarios;
+  usuarios, clientes, projetos, tarefas, historico_status, bloqueios, anexos, comentarios,
+  apontamentos;
 
 -- ---------------------------------------------------------------------------
 -- SEED — só o primeiro admin. O resto do time é adicionado depois direto

@@ -33,6 +33,13 @@ interface TarefaFormProps {
   onRemoverAnexo: (anexoId: string, caminho: string) => Promise<boolean>;
   onBaixarAnexo: (caminho: string) => Promise<string | null>;
   onAdicionarComentario: (tarefaId: string, texto: string) => Promise<boolean>;
+  onAdicionarApontamento: (
+    tarefaId: string,
+    usuario: string,
+    horas: number,
+    data: string
+  ) => Promise<boolean>;
+  onRemoverApontamento: (id: string) => Promise<boolean>;
 }
 
 interface FormState {
@@ -107,6 +114,8 @@ export function TarefaForm({
   onRemoverAnexo,
   onBaixarAnexo,
   onAdicionarComentario,
+  onAdicionarApontamento,
+  onRemoverApontamento,
 }: TarefaFormProps) {
   const [dados, setDados] = useState<FormState>(() => valorInicial(usuarios));
   const [novoBloqueio, setNovoBloqueio] = useState("");
@@ -116,6 +125,9 @@ export function TarefaForm({
   const [erroAnexo, setErroAnexo] = useState("");
   const [novoComentario, setNovoComentario] = useState("");
   const [enviandoComentario, setEnviandoComentario] = useState(false);
+  const [apontUsuario, setApontUsuario] = useState("");
+  const [apontHoras, setApontHoras] = useState("");
+  const [apontData, setApontData] = useState(hoje());
   const [erroSalvar, setErroSalvar] = useState("");
   const tituloRef = useRef<HTMLInputElement>(null);
 
@@ -127,14 +139,18 @@ export function TarefaForm({
     if (tarefaEmEdicao) {
       // eslint-disable-next-line react-hooks/set-state-in-effect
       setDados(valorDeEdicao(tarefaEmEdicao));
+      setApontUsuario(tarefaEmEdicao.quem);
     } else {
       setDados(valorInicial(usuarios));
+      setApontUsuario(usuarios[0]?.nome ?? "");
     }
     setNovoBloqueio("");
     setNovaTag("");
     setArquivoSelecionado(null);
     setErroAnexo("");
     setNovoComentario("");
+    setApontHoras("");
+    setApontData(hoje());
     setErroSalvar("");
     if (aberto) tituloRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -249,6 +265,20 @@ export function TarefaForm({
     const ok = await onAdicionarComentario(tarefaEmEdicao.id, novoComentario);
     setEnviandoComentario(false);
     if (ok) setNovoComentario("");
+  }
+
+  async function registrarApontamento(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tarefaEmEdicao) return;
+    const horas = Number(apontHoras);
+    if (!apontUsuario || !(horas > 0) || !apontData) return;
+    const ok = await onAdicionarApontamento(tarefaEmEdicao.id, apontUsuario, horas, apontData);
+    if (ok) setApontHoras("");
+  }
+
+  async function removerApontamento(id: string) {
+    if (!window.confirm("Remover este apontamento de horas?")) return;
+    await onRemoverApontamento(id);
   }
 
   async function excluir() {
@@ -685,6 +715,87 @@ export function TarefaForm({
               </div>
               {erroAnexo && <p className="mt-1.5 text-xs text-danger">{erroAnexo}</p>}
               <p className="mt-1.5 text-[11px] text-muted">Limite de 10MB por arquivo.</p>
+            </div>
+          )}
+
+          {tarefaEmEdicao && (
+            <div className="border-t border-border pt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Horas apontadas
+                {tarefaEmEdicao.apontamentos.length > 0 && (
+                  <span className="ml-1.5 font-normal normal-case text-muted">
+                    ·{" "}
+                    {tarefaEmEdicao.apontamentos.reduce((soma, a) => soma + a.horas, 0)}h no total
+                  </span>
+                )}
+              </p>
+              {tarefaEmEdicao.apontamentos.length > 0 && (
+                <ul className="mb-2 space-y-1.5">
+                  {tarefaEmEdicao.apontamentos.map((a) => (
+                    <li
+                      key={a.id}
+                      className="flex items-center justify-between gap-2 rounded-sm border border-border px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="flex items-center gap-1.5">
+                        <span
+                          className={`grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[9px] font-semibold ${corResponsavel(
+                            a.usuario
+                          )}`}
+                        >
+                          {iniciais(a.usuario)}
+                        </span>
+                        {a.usuario} · {a.horas}h · {formatDateBR(a.data)}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => removerApontamento(a.id)}
+                        className="shrink-0 font-medium text-muted hover:text-danger"
+                      >
+                        Remover
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex flex-wrap items-end gap-2">
+                <select
+                  value={apontUsuario}
+                  onChange={(e) => setApontUsuario(e.target.value)}
+                  aria-label="Quem apontou as horas"
+                  className="h-8 rounded-sm border border-border bg-background px-2 text-xs outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                >
+                  {usuarios.map((u) => (
+                    <option key={u.id} value={u.nome}>
+                      {u.nome}
+                    </option>
+                  ))}
+                </select>
+                <input
+                  type="number"
+                  min="0.5"
+                  step="0.5"
+                  value={apontHoras}
+                  onChange={(e) => setApontHoras(e.target.value)}
+                  placeholder="Horas"
+                  aria-label="Horas trabalhadas"
+                  className="h-8 w-20 rounded-sm border border-border bg-background px-2 text-xs outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+                <input
+                  type="date"
+                  value={apontData}
+                  onChange={(e) => setApontData(e.target.value)}
+                  aria-label="Data do apontamento"
+                  className="h-8 rounded-sm border border-border bg-background px-2 text-xs outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+                <button
+                  type="button"
+                  onClick={registrarApontamento}
+                  disabled={!apontUsuario || !apontHoras}
+                  className="h-8 rounded-sm border border-border px-3 text-xs font-medium text-foreground transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Registrar
+                </button>
+              </div>
             </div>
           )}
 

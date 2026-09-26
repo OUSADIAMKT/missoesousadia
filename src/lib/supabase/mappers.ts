@@ -1,5 +1,6 @@
 import type {
   Anexo,
+  Apontamento,
   Bloqueio,
   Cliente,
   Comentario,
@@ -64,6 +65,14 @@ export interface ComentarioRow {
   criado_em: string;
 }
 
+export interface ApontamentoRow {
+  id: string;
+  tarefa_id: string;
+  usuario: string;
+  horas: number;
+  data: string;
+}
+
 export interface TarefaRow {
   id: string;
   titulo: string;
@@ -83,6 +92,7 @@ export interface TarefaRow {
   bloqueios?: BloqueioRow[] | null;
   anexos?: AnexoRow[] | null;
   comentarios?: ComentarioRow[] | null;
+  apontamentos?: ApontamentoRow[] | null;
 }
 
 export interface UsuarioRow {
@@ -135,6 +145,15 @@ function bloqueioFromRow(row: BloqueioRow): Bloqueio {
   };
 }
 
+function apontamentoFromRow(row: ApontamentoRow): Apontamento {
+  return {
+    id: row.id,
+    usuario: row.usuario,
+    horas: row.horas,
+    data: row.data,
+  };
+}
+
 function comentarioFromRow(row: ComentarioRow): Comentario {
   return {
     id: row.id,
@@ -178,6 +197,9 @@ export function tarefaFromRow(row: TarefaRow): Tarefa {
     comentarios: (row.comentarios ?? [])
       .map(comentarioFromRow)
       .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm)),
+    apontamentos: (row.apontamentos ?? [])
+      .map(apontamentoFromRow)
+      .sort((a, b) => b.data.localeCompare(a.data)),
     historico: (row.historico_status ?? [])
       .map(historicoFromRow)
       .sort((a, b) => b.data.localeCompare(a.data)),

@@ -95,6 +95,16 @@ export interface Comentario {
   criadoEm: string; // ISO datetime
 }
 
+export interface Apontamento {
+  id: string;
+  // Não necessariamente quem está logado — igual ao campo "quem" da missão,
+  // pode ser lançado por outra pessoa em nome de alguém sem acesso ao sistema
+  // (ex.: a produtora de vídeo terceirizada).
+  usuario: string;
+  horas: number;
+  data: string; // ISO date
+}
+
 export interface Bloqueio {
   id: string;
   motivo: string;
@@ -139,16 +149,17 @@ export interface Tarefa {
   bloqueios: Bloqueio[];
   anexos: Anexo[];
   comentarios: Comentario[];
+  apontamentos: Apontamento[];
   historico: HistoricoStatus[];
 }
 
 // `anexos`, assim como `historico`, é gerenciado à parte (upload separado
 // depois de a missão existir) — uma missão nova nunca nasce com anexos.
-// `comentarios`, assim como `anexos`/`historico`, é gerenciado à parte — uma
-// missão nova nunca nasce com comentários.
+// `comentarios`/`apontamentos`, assim como `anexos`/`historico`, são
+// gerenciados à parte — uma missão nova nunca nasce com eles.
 export type NovaTarefa = Omit<
   Tarefa,
-  "id" | "dataRegistro" | "historico" | "anexos" | "comentarios"
+  "id" | "dataRegistro" | "historico" | "anexos" | "comentarios" | "apontamentos"
 >;
 
 // Tarefa com Cliente/Projeto já resolvidos — evita repetir `find()` a cada

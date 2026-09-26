@@ -6,7 +6,8 @@ import { tarefaFromRow, type TarefaRow } from "./supabase/mappers";
 import type { NovaTarefa, Tarefa } from "./types";
 import { uid } from "./utils";
 
-const SELECT_TAREFA = "*, historico_status(*), bloqueios(*), anexos(*), comentarios(*)";
+const SELECT_TAREFA =
+  "*, historico_status(*), bloqueios(*), anexos(*), comentarios(*), apontamentos(*)";
 
 const BUCKET_ANEXOS = "anexos";
 export const TAMANHO_MAXIMO_ANEXO = 10 * 1024 * 1024; // 10MB — folga dentro do free tier do Supabase Storage.
@@ -48,6 +49,7 @@ export function useTarefas() {
       .on("postgres_changes", { event: "*", schema: "public", table: "bloqueios" }, buscar)
       .on("postgres_changes", { event: "*", schema: "public", table: "anexos" }, buscar)
       .on("postgres_changes", { event: "*", schema: "public", table: "comentarios" }, buscar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "apontamentos" }, buscar)
       .subscribe();
 
     return () => {
@@ -253,6 +255,37 @@ export function useTarefas() {
     [buscar]
   );
 
+  const adicionarApontamento = useCallback(
+    async (tarefaId: string, usuario: string, horas: number, data: string) => {
+      if (!usuario || !(horas > 0) || !data) return false;
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("apontamentos")
+        .insert({ tarefa_id: tarefaId, usuario, horas, data });
+      if (error) {
+        console.error("Erro ao registrar horas:", error.message);
+        return false;
+      }
+      buscar();
+      return true;
+    },
+    [buscar]
+  );
+
+  const removerApontamento = useCallback(
+    async (id: string) => {
+      const supabase = createClient();
+      const { error } = await supabase.from("apontamentos").delete().eq("id", id);
+      if (error) {
+        console.error("Erro ao remover apontamento:", error.message);
+        return false;
+      }
+      buscar();
+      return true;
+    },
+    [buscar]
+  );
+
   return {
     tarefas,
     pronto,
@@ -265,5 +298,7 @@ export function useTarefas() {
     removerAnexo,
     baixarAnexo,
     adicionarComentario,
+    adicionarApontamento,
+    removerApontamento,
   };
 }

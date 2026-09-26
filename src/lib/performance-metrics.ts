@@ -276,6 +276,19 @@ export interface HorasReaisPorMissao {
   horasReais: number;
 }
 
+// Soma os apontamentos manuais de cada missão (ver TarefaForm.tsx e a tabela
+// `apontamentos` em supabase/schema.sql) no formato que precisaoEstimativa/
+// produtividadeReal esperam. Missão sem nenhum apontamento fica de fora —
+// mesma regra do resto do módulo, "sem amostra" não é "zero".
+export function horasReaisDeTarefas(tarefas: TarefaComContexto[]): HorasReaisPorMissao[] {
+  return tarefas
+    .map((t) => ({
+      tarefaId: t.id,
+      horasReais: t.apontamentos.reduce((soma, a) => soma + a.horas, 0),
+    }))
+    .filter((h) => h.horasReais > 0);
+}
+
 export interface MetricaIndisponivel {
   disponivel: false;
   motivo: string;

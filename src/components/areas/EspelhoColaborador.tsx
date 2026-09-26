@@ -19,6 +19,7 @@ import {
   calcularDistribuicaoPorCliente,
   cycleTimeMedioDias,
   formatDias,
+  horasReaisDeTarefas,
   indiceConcentracaoCliente,
   LIMITE_CONCENTRACAO_RISCO,
   mixPorTipoDeMissao,
@@ -140,8 +141,12 @@ export function EspelhoColaborador({
   const emRiscoDeConcentracao = (concentracaoPessoa ?? 0) > LIMITE_CONCENTRACAO_RISCO;
   const prazoPessoa = valorPessoa(statPrazo, colaboradorNome);
 
-  const precisao = precisaoEstimativa(tarefasDoColaborador);
-  const produtividade = produtividadeReal(tarefasDoColaborador);
+  // Horas reais vêm do apontamento manual (TarefaForm.tsx) — calculado sobre
+  // todasTarefas porque precisaoEstimativa/produtividadeReal só olham o que
+  // encontrarem para os ids de tarefasDoColaborador, e ignoram o resto.
+  const horasReais = horasReaisDeTarefas(todasTarefas);
+  const precisao = precisaoEstimativa(tarefasDoColaborador, horasReais);
+  const produtividade = produtividadeReal(tarefasDoColaborador, horasReais);
   const financeiro = retornoFinanceiroPorColaborador(
     tarefasDoColaborador,
     todasTarefas,
@@ -454,7 +459,7 @@ export function EspelhoColaborador({
 
       <details className="rounded-xl border border-slate-800 bg-slate-900 p-4 shadow-lg shadow-black/20">
         <summary className="cursor-pointer font-sans text-xs font-bold uppercase tracking-wider text-slate-300">
-          Produtividade real &amp; retorno financeiro (em construção)
+          Produtividade real &amp; retorno financeiro
         </summary>
         <div className="mt-4 grid gap-4 md:grid-cols-2">
           <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/40 p-4">
@@ -474,7 +479,8 @@ export function EspelhoColaborador({
                 : "aguardando dados"}
             </p>
             <p className="mt-2 text-[11px] text-slate-500">
-              Precisa de apontamento de horas reais por missão (hoje só existe a estimativa).
+              Vem do apontamento manual de horas em cada missão — aparece assim que houver
+              amostra suficiente para {colaboradorNome.split(" ")[0]}.
             </p>
           </div>
           <div className="rounded-lg border border-dashed border-slate-700 bg-slate-950/40 p-4">
