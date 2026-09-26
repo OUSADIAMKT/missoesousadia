@@ -31,6 +31,9 @@ export default function Home() {
     remover,
     adicionarBloqueio,
     resolverBloqueio,
+    enviarAnexo,
+    removerAnexo,
+    baixarAnexo,
   } = useTarefas();
   const {
     usuarios,
@@ -304,6 +307,9 @@ export default function Home() {
         onEncontrarOuCriarProjeto={estrutura.encontrarOuCriarProjeto}
         onAdicionarBloqueio={adicionarBloqueio}
         onResolverBloqueio={resolverBloqueio}
+        onEnviarAnexo={enviarAnexo}
+        onRemoverAnexo={removerAnexo}
+        onBaixarAnexo={baixarAnexo}
       />
 
       <GerenciarUsuarios

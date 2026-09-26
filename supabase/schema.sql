@@ -148,12 +148,28 @@ create table bloqueios (
   resolvido_em timestamptz
 );
 
+-- Arquivos anexados à missão (briefing, arte, referência), guardados no
+-- Supabase Storage (bucket "anexos", ver seção STORAGE mais abaixo).
+create table anexos (
+  id uuid primary key default gen_random_uuid(),
+  tarefa_id uuid not null references tarefas(id) on delete cascade,
+  nome text not null,
+  -- Caminho dentro do bucket "anexos" — é a partir dele que o app gera o
+  -- link de download/remoção no Storage.
+  caminho text not null,
+  tamanho bigint,
+  tipo text,
+  criado_por text not null,
+  criado_em timestamptz not null default now()
+);
+
 create unique index clientes_nome_unico on clientes (lower(nome));
 create index on projetos (cliente_id);
 create unique index projetos_nome_unico on projetos (cliente_id, lower(nome));
 create index on tarefas (projeto_id);
 create index on historico_status (tarefa_id);
 create index on bloqueios (tarefa_id);
+create index on anexos (tarefa_id);
 
 -- ---------------------------------------------------------------------------
 -- HISTÓRICO DE STATUS: registrado automaticamente pelo banco (não pelo app),
@@ -214,6 +230,12 @@ create trigger bloqueios_forcar_criado_por
   for each row
   execute function forcar_criado_por();
 
+-- Mesma trava para anexos: quem enviou o arquivo vem do login, não do payload.
+create trigger anexos_forcar_criado_por
+  before insert on anexos
+  for each row
+  execute function forcar_criado_por();
+
 -- ---------------------------------------------------------------------------
 -- RLS: um app interno de um time só — a regra é a mesma em toda tabela,
 -- "está na lista de usuários permitidos? então lê e escreve tudo". Duas
@@ -229,6 +251,7 @@ alter table projetos enable row level security;
 alter table tarefas enable row level security;
 alter table historico_status enable row level security;
 alter table bloqueios enable row level security;
+alter table anexos enable row level security;
 
 create policy "time le usuarios" on usuarios
   for select using (is_team_member());
@@ -248,6 +271,25 @@ create policy "time acessa historico" on historico_status
   for select using (is_team_member());
 create policy "time acessa bloqueios" on bloqueios
   for all using (is_team_member()) with check (is_team_member());
+create policy "time acessa anexos" on anexos
+  for all using (is_team_member()) with check (is_team_member());
+
+-- ---------------------------------------------------------------------------
+-- STORAGE: bucket privado para os anexos das missões. Acesso só via RLS de
+-- storage.objects (mesma regra "time inteiro lê e escreve" do resto do app),
+-- nunca por URL pública direta.
+-- ---------------------------------------------------------------------------
+
+insert into storage.buckets (id, name, public)
+values ('anexos', 'anexos', false)
+on conflict (id) do nothing;
+
+create policy "time le anexos no storage" on storage.objects
+  for select using (bucket_id = 'anexos' and public.is_team_member());
+create policy "time envia anexos no storage" on storage.objects
+  for insert with check (bucket_id = 'anexos' and public.is_team_member());
+create policy "time remove anexos no storage" on storage.objects
+  for delete using (bucket_id = 'anexos' and public.is_team_member());
 
 -- ---------------------------------------------------------------------------
 -- REALTIME: mudanças feitas por uma pessoa aparecem na tela das outras sem
@@ -255,7 +297,7 @@ create policy "time acessa bloqueios" on bloqueios
 -- ---------------------------------------------------------------------------
 
 alter publication supabase_realtime add table
-  usuarios, clientes, projetos, tarefas, historico_status, bloqueios;
+  usuarios, clientes, projetos, tarefas, historico_status, bloqueios, anexos;
 
 -- ---------------------------------------------------------------------------
 -- SEED — só o primeiro admin. O resto do time é adicionado depois direto

@@ -76,6 +76,18 @@ export interface HistoricoStatus {
   data: string; // ISO datetime completo
 }
 
+export interface Anexo {
+  id: string;
+  nome: string;
+  // Caminho dentro do bucket "anexos" no Supabase Storage — usado para gerar
+  // o link de download (signed URL) e para remover o arquivo.
+  caminho: string;
+  tamanho: number | null; // bytes
+  tipo: string | null; // MIME type
+  criadoPor: string;
+  criadoEm: string; // ISO datetime
+}
+
 export interface Bloqueio {
   id: string;
   motivo: string;
@@ -118,10 +130,13 @@ export interface Tarefa {
   // simplifica UI e filtro (ver `tags` em supabase/schema.sql).
   tags: string[];
   bloqueios: Bloqueio[];
+  anexos: Anexo[];
   historico: HistoricoStatus[];
 }
 
-export type NovaTarefa = Omit<Tarefa, "id" | "dataRegistro" | "historico">;
+// `anexos`, assim como `historico`, é gerenciado à parte (upload separado
+// depois de a missão existir) — uma missão nova nunca nasce com anexos.
+export type NovaTarefa = Omit<Tarefa, "id" | "dataRegistro" | "historico" | "anexos">;
 
 // Tarefa com Cliente/Projeto já resolvidos — evita repetir `find()` a cada
 // card renderizado. `projeto`/`cliente` ficam `undefined` só se os dados

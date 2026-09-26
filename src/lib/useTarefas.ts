@@ -4,8 +4,12 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "./supabase/client";
 import { tarefaFromRow, type TarefaRow } from "./supabase/mappers";
 import type { NovaTarefa, Tarefa } from "./types";
+import { uid } from "./utils";
 
-const SELECT_TAREFA = "*, historico_status(*), bloqueios(*)";
+const SELECT_TAREFA = "*, historico_status(*), bloqueios(*), anexos(*)";
+
+const BUCKET_ANEXOS = "anexos";
+export const TAMANHO_MAXIMO_ANEXO = 10 * 1024 * 1024; // 10MB — folga dentro do free tier do Supabase Storage.
 
 // "Quem fez o quê" (histórico de status, `criado_por` dos bloqueios) não é
 // mais passado pelo componente: o banco resolve isso sozinho a partir de
@@ -42,6 +46,7 @@ export function useTarefas() {
       .on("postgres_changes", { event: "*", schema: "public", table: "tarefas" }, buscar)
       .on("postgres_changes", { event: "*", schema: "public", table: "historico_status" }, buscar)
       .on("postgres_changes", { event: "*", schema: "public", table: "bloqueios" }, buscar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "anexos" }, buscar)
       .subscribe();
 
     return () => {
@@ -159,6 +164,76 @@ export function useTarefas() {
     [buscar]
   );
 
+  const enviarAnexo = useCallback(
+    async (tarefaId: string, arquivo: File) => {
+      if (arquivo.size > TAMANHO_MAXIMO_ANEXO) {
+        console.error("Anexo maior que o limite de 10MB.");
+        return false;
+      }
+      const supabase = createClient();
+      const caminho = `${tarefaId}/${uid()}-${arquivo.name}`;
+      const { error: erroUpload } = await supabase.storage
+        .from(BUCKET_ANEXOS)
+        .upload(caminho, arquivo);
+      if (erroUpload) {
+        console.error("Erro ao enviar anexo:", erroUpload.message);
+        return false;
+      }
+      const { error: erroInsert } = await supabase.from("anexos").insert({
+        tarefa_id: tarefaId,
+        nome: arquivo.name,
+        caminho,
+        tamanho: arquivo.size,
+        tipo: arquivo.type || null,
+      });
+      if (erroInsert) {
+        console.error("Erro ao registrar anexo:", erroInsert.message);
+        // Desfaz o upload — senão fica um arquivo órfão no Storage, sem
+        // linha em `anexos` e sem jeito de removê-lo pela UI.
+        await supabase.storage.from(BUCKET_ANEXOS).remove([caminho]);
+        return false;
+      }
+      buscar();
+      return true;
+    },
+    [buscar]
+  );
+
+  const removerAnexo = useCallback(
+    async (anexoId: string, caminho: string) => {
+      const supabase = createClient();
+      const { error: erroStorage } = await supabase.storage
+        .from(BUCKET_ANEXOS)
+        .remove([caminho]);
+      if (erroStorage) {
+        console.error("Erro ao remover arquivo do anexo:", erroStorage.message);
+        return false;
+      }
+      const { error } = await supabase.from("anexos").delete().eq("id", anexoId);
+      if (error) {
+        console.error("Erro ao remover anexo:", error.message);
+        return false;
+      }
+      buscar();
+      return true;
+    },
+    [buscar]
+  );
+
+  // Bucket privado: o link não é público, então cada download gera uma URL
+  // assinada de curta duração em vez de expor um caminho fixo.
+  const baixarAnexo = useCallback(async (caminho: string) => {
+    const supabase = createClient();
+    const { data, error } = await supabase.storage
+      .from(BUCKET_ANEXOS)
+      .createSignedUrl(caminho, 60);
+    if (error || !data) {
+      console.error("Erro ao gerar link do anexo:", error?.message);
+      return null;
+    }
+    return data.signedUrl;
+  }, []);
+
   return {
     tarefas,
     pronto,
@@ -167,5 +242,8 @@ export function useTarefas() {
     remover,
     adicionarBloqueio,
     resolverBloqueio,
+    enviarAnexo,
+    removerAnexo,
+    baixarAnexo,
   };
 }

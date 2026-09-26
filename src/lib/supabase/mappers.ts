@@ -1,4 +1,5 @@
 import type {
+  Anexo,
   Bloqueio,
   Cliente,
   Complexidade,
@@ -43,6 +44,17 @@ export interface BloqueioRow {
   resolvido_em: string | null;
 }
 
+export interface AnexoRow {
+  id: string;
+  tarefa_id: string;
+  nome: string;
+  caminho: string;
+  tamanho: number | null;
+  tipo: string | null;
+  criado_por: string;
+  criado_em: string;
+}
+
 export interface TarefaRow {
   id: string;
   titulo: string;
@@ -60,6 +72,7 @@ export interface TarefaRow {
   tags: string[] | null;
   historico_status?: HistoricoStatusRow[] | null;
   bloqueios?: BloqueioRow[] | null;
+  anexos?: AnexoRow[] | null;
 }
 
 export interface UsuarioRow {
@@ -112,6 +125,18 @@ function bloqueioFromRow(row: BloqueioRow): Bloqueio {
   };
 }
 
+function anexoFromRow(row: AnexoRow): Anexo {
+  return {
+    id: row.id,
+    nome: row.nome,
+    caminho: row.caminho,
+    tamanho: row.tamanho,
+    tipo: row.tipo,
+    criadoPor: row.criado_por,
+    criadoEm: row.criado_em,
+  };
+}
+
 export function tarefaFromRow(row: TarefaRow): Tarefa {
   return {
     id: row.id,
@@ -129,6 +154,7 @@ export function tarefaFromRow(row: TarefaRow): Tarefa {
     quem: row.quem,
     tags: row.tags ?? [],
     bloqueios: (row.bloqueios ?? []).map(bloqueioFromRow),
+    anexos: (row.anexos ?? []).map(anexoFromRow),
     historico: (row.historico_status ?? [])
       .map(historicoFromRow)
       .sort((a, b) => b.data.localeCompare(a.data)),

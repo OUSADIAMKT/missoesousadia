@@ -33,6 +33,7 @@ function missao(
     custoExecucao: extras.custoExecucao,
     tags: [],
     bloqueios: [],
+    anexos: [],
     historico: [
       { id: "h1", statusAnterior: "Em Andamento", statusNovo: status, usuario: quem, data: `${concluidaEm}T12:00:00.000Z` },
     ],

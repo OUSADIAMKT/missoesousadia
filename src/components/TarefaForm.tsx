@@ -14,7 +14,8 @@ import {
   type TarefaComContexto,
   type Usuario,
 } from "@/lib/types";
-import { corResponsavel, formatDateBR, formatDateTimeBR, iniciais } from "@/lib/utils";
+import { corResponsavel, formatDateBR, formatDateTimeBR, formatTamanhoArquivo, iniciais } from "@/lib/utils";
+import { TAMANHO_MAXIMO_ANEXO } from "@/lib/useTarefas";
 
 interface TarefaFormProps {
   aberto: boolean;
@@ -28,6 +29,9 @@ interface TarefaFormProps {
   onEncontrarOuCriarProjeto: (nomeCliente: string, nomeProjeto?: string) => Promise<string>;
   onAdicionarBloqueio: (tarefaId: string, motivo: string) => void;
   onResolverBloqueio: (tarefaId: string, bloqueioId: string) => void;
+  onEnviarAnexo: (tarefaId: string, arquivo: File) => Promise<boolean>;
+  onRemoverAnexo: (anexoId: string, caminho: string) => Promise<boolean>;
+  onBaixarAnexo: (caminho: string) => Promise<string | null>;
 }
 
 interface FormState {
@@ -98,10 +102,16 @@ export function TarefaForm({
   onEncontrarOuCriarProjeto,
   onAdicionarBloqueio,
   onResolverBloqueio,
+  onEnviarAnexo,
+  onRemoverAnexo,
+  onBaixarAnexo,
 }: TarefaFormProps) {
   const [dados, setDados] = useState<FormState>(() => valorInicial(usuarios));
   const [novoBloqueio, setNovoBloqueio] = useState("");
   const [novaTag, setNovaTag] = useState("");
+  const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(null);
+  const [enviandoAnexo, setEnviandoAnexo] = useState(false);
+  const [erroAnexo, setErroAnexo] = useState("");
   const [erroSalvar, setErroSalvar] = useState("");
   const tituloRef = useRef<HTMLInputElement>(null);
 
@@ -118,6 +128,8 @@ export function TarefaForm({
     }
     setNovoBloqueio("");
     setNovaTag("");
+    setArquivoSelecionado(null);
+    setErroAnexo("");
     setErroSalvar("");
     if (aberto) tituloRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -190,6 +202,39 @@ export function TarefaForm({
     if (!tarefaEmEdicao || !novoBloqueio.trim()) return;
     onAdicionarBloqueio(tarefaEmEdicao.id, novoBloqueio);
     setNovoBloqueio("");
+  }
+
+  async function enviarAnexo(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tarefaEmEdicao || !arquivoSelecionado) return;
+    if (arquivoSelecionado.size > TAMANHO_MAXIMO_ANEXO) {
+      setErroAnexo("Arquivo maior que 10MB. Envie um arquivo menor.");
+      return;
+    }
+    setErroAnexo("");
+    setEnviandoAnexo(true);
+    const ok = await onEnviarAnexo(tarefaEmEdicao.id, arquivoSelecionado);
+    setEnviandoAnexo(false);
+    if (ok) {
+      setArquivoSelecionado(null);
+    } else {
+      setErroAnexo("Não foi possível enviar o anexo. Tente novamente.");
+    }
+  }
+
+  async function baixarAnexo(anexo: { caminho: string; nome: string }) {
+    const url = await onBaixarAnexo(anexo.caminho);
+    if (url) {
+      window.open(url, "_blank", "noopener,noreferrer");
+    } else {
+      setErroAnexo("Não foi possível gerar o link de download.");
+    }
+  }
+
+  async function removerAnexo(anexo: { id: string; caminho: string; nome: string }) {
+    if (!window.confirm(`Remover o anexo "${anexo.nome}"?`)) return;
+    const ok = await onRemoverAnexo(anexo.id, anexo.caminho);
+    if (!ok) setErroAnexo("Não foi possível remover o anexo. Tente novamente.");
   }
 
   async function excluir() {
@@ -521,6 +566,64 @@ export function TarefaForm({
                   Bloquear
                 </button>
               </div>
+            </div>
+          )}
+
+          {tarefaEmEdicao && (
+            <div className="border-t border-border pt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Anexos
+              </p>
+              {tarefaEmEdicao.anexos.length > 0 && (
+                <ul className="mb-2 space-y-1.5">
+                  {tarefaEmEdicao.anexos.map((a) => (
+                    <li
+                      key={a.id}
+                      className="flex items-center justify-between gap-2 rounded-sm border border-border px-2.5 py-1.5 text-xs"
+                    >
+                      <span className="min-w-0 truncate">
+                        📎 {a.nome}
+                        <span className="ml-1.5 text-muted">
+                          {formatTamanhoArquivo(a.tamanho)} · {a.criadoPor}
+                        </span>
+                      </span>
+                      <span className="flex shrink-0 items-center gap-2">
+                        <button
+                          type="button"
+                          onClick={() => baixarAnexo(a)}
+                          className="font-medium text-brand hover:underline"
+                        >
+                          Baixar
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => removerAnexo(a)}
+                          className="font-medium text-muted hover:text-danger"
+                        >
+                          Remover
+                        </button>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  type="file"
+                  onChange={(e) => setArquivoSelecionado(e.target.files?.[0] ?? null)}
+                  className="flex-1 text-xs text-muted file:mr-2 file:rounded-sm file:border file:border-border file:bg-background file:px-2 file:py-1 file:text-xs file:font-medium file:text-foreground"
+                />
+                <button
+                  type="button"
+                  onClick={enviarAnexo}
+                  disabled={!arquivoSelecionado || enviandoAnexo}
+                  className="rounded-sm border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {enviandoAnexo ? "Enviando..." : "Enviar"}
+                </button>
+              </div>
+              {erroAnexo && <p className="mt-1.5 text-xs text-danger">{erroAnexo}</p>}
+              <p className="mt-1.5 text-[11px] text-muted">Limite de 10MB por arquivo.</p>
             </div>
           )}
 
