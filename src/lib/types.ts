@@ -88,6 +88,13 @@ export interface Anexo {
   criadoEm: string; // ISO datetime
 }
 
+export interface Comentario {
+  id: string;
+  autor: string;
+  texto: string;
+  criadoEm: string; // ISO datetime
+}
+
 export interface Bloqueio {
   id: string;
   motivo: string;
@@ -131,12 +138,18 @@ export interface Tarefa {
   tags: string[];
   bloqueios: Bloqueio[];
   anexos: Anexo[];
+  comentarios: Comentario[];
   historico: HistoricoStatus[];
 }
 
 // `anexos`, assim como `historico`, é gerenciado à parte (upload separado
 // depois de a missão existir) — uma missão nova nunca nasce com anexos.
-export type NovaTarefa = Omit<Tarefa, "id" | "dataRegistro" | "historico" | "anexos">;
+// `comentarios`, assim como `anexos`/`historico`, é gerenciado à parte — uma
+// missão nova nunca nasce com comentários.
+export type NovaTarefa = Omit<
+  Tarefa,
+  "id" | "dataRegistro" | "historico" | "anexos" | "comentarios"
+>;
 
 // Tarefa com Cliente/Projeto já resolvidos — evita repetir `find()` a cada
 // card renderizado. `projeto`/`cliente` ficam `undefined` só se os dados

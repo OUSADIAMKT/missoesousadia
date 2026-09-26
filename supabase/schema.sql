@@ -163,6 +163,16 @@ create table anexos (
   criado_em timestamptz not null default now()
 );
 
+-- Discussão da missão, separada do histórico de status e dos bloqueios —
+-- um lugar para tirar dúvida sem precisar mudar o status.
+create table comentarios (
+  id uuid primary key default gen_random_uuid(),
+  tarefa_id uuid not null references tarefas(id) on delete cascade,
+  autor text not null,
+  texto text not null,
+  criado_em timestamptz not null default now()
+);
+
 create unique index clientes_nome_unico on clientes (lower(nome));
 create index on projetos (cliente_id);
 create unique index projetos_nome_unico on projetos (cliente_id, lower(nome));
@@ -170,6 +180,7 @@ create index on tarefas (projeto_id);
 create index on historico_status (tarefa_id);
 create index on bloqueios (tarefa_id);
 create index on anexos (tarefa_id);
+create index on comentarios (tarefa_id);
 
 -- ---------------------------------------------------------------------------
 -- HISTÓRICO DE STATUS: registrado automaticamente pelo banco (não pelo app),
@@ -237,6 +248,28 @@ create trigger anexos_forcar_criado_por
   execute function forcar_criado_por();
 
 -- ---------------------------------------------------------------------------
+-- COMENTÁRIOS: mesma lógica de forcar_criado_por() acima, só que a coluna se
+-- chama "autor" aqui — um comentário é sempre de quem está logado.
+-- ---------------------------------------------------------------------------
+
+create or replace function forcar_autor_comentario()
+returns trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+begin
+  new.autor := coalesce(nome_do_usuario_logado(), 'Desconhecido');
+  return new;
+end;
+$$;
+
+create trigger comentarios_forcar_autor
+  before insert on comentarios
+  for each row
+  execute function forcar_autor_comentario();
+
+-- ---------------------------------------------------------------------------
 -- RLS: um app interno de um time só — a regra é a mesma em toda tabela,
 -- "está na lista de usuários permitidos? então lê e escreve tudo". Duas
 -- exceções: `historico_status`, que só é escrito pelo trigger (security
@@ -252,6 +285,7 @@ alter table tarefas enable row level security;
 alter table historico_status enable row level security;
 alter table bloqueios enable row level security;
 alter table anexos enable row level security;
+alter table comentarios enable row level security;
 
 create policy "time le usuarios" on usuarios
   for select using (is_team_member());
@@ -272,6 +306,8 @@ create policy "time acessa historico" on historico_status
 create policy "time acessa bloqueios" on bloqueios
   for all using (is_team_member()) with check (is_team_member());
 create policy "time acessa anexos" on anexos
+  for all using (is_team_member()) with check (is_team_member());
+create policy "time acessa comentarios" on comentarios
   for all using (is_team_member()) with check (is_team_member());
 
 -- ---------------------------------------------------------------------------
@@ -297,7 +333,7 @@ create policy "time remove anexos no storage" on storage.objects
 -- ---------------------------------------------------------------------------
 
 alter publication supabase_realtime add table
-  usuarios, clientes, projetos, tarefas, historico_status, bloqueios, anexos;
+  usuarios, clientes, projetos, tarefas, historico_status, bloqueios, anexos, comentarios;
 
 -- ---------------------------------------------------------------------------
 -- SEED — só o primeiro admin. O resto do time é adicionado depois direto

@@ -6,7 +6,7 @@ import { tarefaFromRow, type TarefaRow } from "./supabase/mappers";
 import type { NovaTarefa, Tarefa } from "./types";
 import { uid } from "./utils";
 
-const SELECT_TAREFA = "*, historico_status(*), bloqueios(*), anexos(*)";
+const SELECT_TAREFA = "*, historico_status(*), bloqueios(*), anexos(*), comentarios(*)";
 
 const BUCKET_ANEXOS = "anexos";
 export const TAMANHO_MAXIMO_ANEXO = 10 * 1024 * 1024; // 10MB — folga dentro do free tier do Supabase Storage.
@@ -47,6 +47,7 @@ export function useTarefas() {
       .on("postgres_changes", { event: "*", schema: "public", table: "historico_status" }, buscar)
       .on("postgres_changes", { event: "*", schema: "public", table: "bloqueios" }, buscar)
       .on("postgres_changes", { event: "*", schema: "public", table: "anexos" }, buscar)
+      .on("postgres_changes", { event: "*", schema: "public", table: "comentarios" }, buscar)
       .subscribe();
 
     return () => {
@@ -234,6 +235,24 @@ export function useTarefas() {
     return data.signedUrl;
   }, []);
 
+  const adicionarComentario = useCallback(
+    async (tarefaId: string, texto: string) => {
+      const limpo = texto.trim();
+      if (!limpo) return false;
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("comentarios")
+        .insert({ tarefa_id: tarefaId, texto: limpo });
+      if (error) {
+        console.error("Erro ao adicionar comentário:", error.message);
+        return false;
+      }
+      buscar();
+      return true;
+    },
+    [buscar]
+  );
+
   return {
     tarefas,
     pronto,
@@ -245,5 +264,6 @@ export function useTarefas() {
     enviarAnexo,
     removerAnexo,
     baixarAnexo,
+    adicionarComentario,
   };
 }

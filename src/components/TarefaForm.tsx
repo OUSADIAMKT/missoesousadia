@@ -32,6 +32,7 @@ interface TarefaFormProps {
   onEnviarAnexo: (tarefaId: string, arquivo: File) => Promise<boolean>;
   onRemoverAnexo: (anexoId: string, caminho: string) => Promise<boolean>;
   onBaixarAnexo: (caminho: string) => Promise<string | null>;
+  onAdicionarComentario: (tarefaId: string, texto: string) => Promise<boolean>;
 }
 
 interface FormState {
@@ -105,6 +106,7 @@ export function TarefaForm({
   onEnviarAnexo,
   onRemoverAnexo,
   onBaixarAnexo,
+  onAdicionarComentario,
 }: TarefaFormProps) {
   const [dados, setDados] = useState<FormState>(() => valorInicial(usuarios));
   const [novoBloqueio, setNovoBloqueio] = useState("");
@@ -112,6 +114,8 @@ export function TarefaForm({
   const [arquivoSelecionado, setArquivoSelecionado] = useState<File | null>(null);
   const [enviandoAnexo, setEnviandoAnexo] = useState(false);
   const [erroAnexo, setErroAnexo] = useState("");
+  const [novoComentario, setNovoComentario] = useState("");
+  const [enviandoComentario, setEnviandoComentario] = useState(false);
   const [erroSalvar, setErroSalvar] = useState("");
   const tituloRef = useRef<HTMLInputElement>(null);
 
@@ -130,6 +134,7 @@ export function TarefaForm({
     setNovaTag("");
     setArquivoSelecionado(null);
     setErroAnexo("");
+    setNovoComentario("");
     setErroSalvar("");
     if (aberto) tituloRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -235,6 +240,15 @@ export function TarefaForm({
     if (!window.confirm(`Remover o anexo "${anexo.nome}"?`)) return;
     const ok = await onRemoverAnexo(anexo.id, anexo.caminho);
     if (!ok) setErroAnexo("Não foi possível remover o anexo. Tente novamente.");
+  }
+
+  async function enviarComentario(e: React.FormEvent) {
+    e.preventDefault();
+    if (!tarefaEmEdicao || !novoComentario.trim()) return;
+    setEnviandoComentario(true);
+    const ok = await onAdicionarComentario(tarefaEmEdicao.id, novoComentario);
+    setEnviandoComentario(false);
+    if (ok) setNovoComentario("");
   }
 
   async function excluir() {
@@ -564,6 +578,53 @@ export function TarefaForm({
                   className="rounded-sm border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-background"
                 >
                   Bloquear
+                </button>
+              </div>
+            </div>
+          )}
+
+          {tarefaEmEdicao && (
+            <div className="border-t border-border pt-4">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+                Comentários
+              </p>
+              {tarefaEmEdicao.comentarios.length > 0 && (
+                <ul className="mb-2 max-h-40 space-y-2 overflow-y-auto pr-1">
+                  {tarefaEmEdicao.comentarios.map((c) => (
+                    <li key={c.id} className="flex items-start gap-2 text-xs">
+                      <span
+                        className={`mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full border text-[9px] font-semibold ${corResponsavel(
+                          c.autor
+                        )}`}
+                      >
+                        {iniciais(c.autor)}
+                      </span>
+                      <span className="min-w-0 flex-1 rounded-sm bg-background px-2.5 py-1.5 text-foreground">
+                        <strong>{c.autor}</strong>
+                        <span className="block whitespace-pre-wrap break-words">{c.texto}</span>
+                        <span className="block text-muted">{formatDateTimeBR(c.criadoEm)}</span>
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+              <div className="flex gap-2">
+                <input
+                  value={novoComentario}
+                  onChange={(e) => setNovoComentario(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") enviarComentario(e);
+                  }}
+                  placeholder="Escrever um comentário..."
+                  className="flex-1 rounded-sm border border-border bg-background px-3 py-1.5 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
+                />
+                <button
+                  type="button"
+                  onClick={enviarComentario}
+                  disabled={!novoComentario.trim() || enviandoComentario}
+                  className="rounded-sm border border-border px-3 py-1.5 text-sm font-medium text-foreground transition hover:bg-background disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  Comentar
                 </button>
               </div>
             </div>

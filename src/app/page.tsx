@@ -34,6 +34,7 @@ export default function Home() {
     enviarAnexo,
     removerAnexo,
     baixarAnexo,
+    adicionarComentario,
   } = useTarefas();
   const {
     usuarios,
@@ -310,6 +311,7 @@ export default function Home() {
         onEnviarAnexo={enviarAnexo}
         onRemoverAnexo={removerAnexo}
         onBaixarAnexo={baixarAnexo}
+        onAdicionarComentario={adicionarComentario}
       />
 
       <GerenciarUsuarios

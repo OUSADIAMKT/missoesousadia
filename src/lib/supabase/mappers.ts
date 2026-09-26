@@ -2,6 +2,7 @@ import type {
   Anexo,
   Bloqueio,
   Cliente,
+  Comentario,
   Complexidade,
   HistoricoStatus,
   Papel,
@@ -55,6 +56,14 @@ export interface AnexoRow {
   criado_em: string;
 }
 
+export interface ComentarioRow {
+  id: string;
+  tarefa_id: string;
+  autor: string;
+  texto: string;
+  criado_em: string;
+}
+
 export interface TarefaRow {
   id: string;
   titulo: string;
@@ -73,6 +82,7 @@ export interface TarefaRow {
   historico_status?: HistoricoStatusRow[] | null;
   bloqueios?: BloqueioRow[] | null;
   anexos?: AnexoRow[] | null;
+  comentarios?: ComentarioRow[] | null;
 }
 
 export interface UsuarioRow {
@@ -125,6 +135,15 @@ function bloqueioFromRow(row: BloqueioRow): Bloqueio {
   };
 }
 
+function comentarioFromRow(row: ComentarioRow): Comentario {
+  return {
+    id: row.id,
+    autor: row.autor,
+    texto: row.texto,
+    criadoEm: row.criado_em,
+  };
+}
+
 function anexoFromRow(row: AnexoRow): Anexo {
   return {
     id: row.id,
@@ -155,6 +174,10 @@ export function tarefaFromRow(row: TarefaRow): Tarefa {
     tags: row.tags ?? [],
     bloqueios: (row.bloqueios ?? []).map(bloqueioFromRow),
     anexos: (row.anexos ?? []).map(anexoFromRow),
+    // Ordem cronológica (mais antigo primeiro) — é uma conversa, não um log.
+    comentarios: (row.comentarios ?? [])
+      .map(comentarioFromRow)
+      .sort((a, b) => a.criadoEm.localeCompare(b.criadoEm)),
     historico: (row.historico_status ?? [])
       .map(historicoFromRow)
       .sort((a, b) => b.data.localeCompare(a.data)),
