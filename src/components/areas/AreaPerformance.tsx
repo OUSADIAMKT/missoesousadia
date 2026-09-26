@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import * as XLSX from "xlsx";
 import {
   Bar,
   BarChart,
@@ -154,6 +155,74 @@ export function AreaPerformance({
     [tarefas, clientesCadastrados, usuarios, mesCusto]
   );
 
+  function exportarRelatorio() {
+    const wb = XLSX.utils.book_new();
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet([
+        { Indicador: "Total de missões", Valor: total },
+        { Indicador: "Taxa de conclusão (%)", Valor: taxaConclusaoGlobal },
+        { Indicador: "Em andamento", Valor: emAndamentoGlobal },
+        { Indicador: "Ajustes / risco", Valor: emRiscoGlobal },
+      ]),
+      "Resumo"
+    );
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        porStatus.map((s) => ({ Status: s.status, Quantidade: s.qtd, "%": s.pct }))
+      ),
+      "Por status"
+    );
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        carga.map((c) => ({
+          Nome: c.nome,
+          "Missões ativas": c.qtd,
+          Sobrecarregada: c.sobrecarregada ? "Sim" : "Não",
+        }))
+      ),
+      "Carga por pessoa"
+    );
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        custosPorEntrega.map((c) => ({
+          Nome: c.nome,
+          Vínculo: ROTULO_VINCULO[c.vinculo],
+          "Custo mensal (R$)": c.custoMensal,
+          Entregas: c.entregas,
+          "Custo por entrega (R$)": c.custoPorEntrega ?? "",
+        }))
+      ),
+      `Custo por entrega ${mesCusto}`.slice(0, 31)
+    );
+
+    XLSX.utils.book_append_sheet(
+      wb,
+      XLSX.utils.json_to_sheet(
+        lucro.porCliente.map((c) => ({
+          Cliente: c.nome,
+          "Receita mensal (R$)": c.receita ?? "",
+          "Custo direto (R$)": c.custoDireto,
+          "Custo rateado (R$)": c.custoRateado,
+          "Custo total (R$)": c.custoTotal,
+          "Margem (R$)": c.margem ?? "",
+          "Margem (%)": c.margemPercentual ?? "",
+          Entregas: c.entregas,
+        }))
+      ),
+      `Lucro por cliente ${mesCusto}`.slice(0, 31)
+    );
+
+    XLSX.writeFile(wb, `performance-ousadia-${mesCusto}.xlsx`);
+  }
+
   const [visao, setVisao] = useState<VisaoRelatorio>("cliente");
   const [clienteId, setClienteId] = useState("");
   const clienteSelecionado = clientes.find((c) => c.id === clienteId);
@@ -172,6 +241,16 @@ export function AreaPerformance({
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl bg-slate-950 p-4 text-slate-100 sm:p-5">
+      <div className="flex items-center justify-end">
+        <button
+          type="button"
+          onClick={exportarRelatorio}
+          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-orange-500 hover:text-white"
+        >
+          ⬇ Exportar relatório (.xlsx)
+        </button>
+      </div>
+
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
         <KpiTile
