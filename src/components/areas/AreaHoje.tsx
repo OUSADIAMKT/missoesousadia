@@ -5,6 +5,7 @@ import { TarefaCard } from "@/components/TarefaCard";
 import type { Status, TarefaComContexto } from "@/lib/types";
 import { corResponsavel, iniciais, isAtrasada, isProximaDoPrazo } from "@/lib/utils";
 import { agingDasAtivas } from "@/lib/performance-metrics";
+import { gerarBriefingDiario, type ItemBriefingIA } from "@/lib/ia";
 
 interface AreaHojeProps {
   tarefas: TarefaComContexto[];
@@ -75,6 +76,9 @@ function Secao({ titulo, descricao, corPonto, tarefas, onSelecionar, onMoverStat
 
 export function AreaHoje({ tarefas, usuarioAtual, onSelecionar, onMoverStatus }: AreaHojeProps) {
   const [soMinhas, setSoMinhas] = useState(false);
+  const [gerandoBriefing, setGerandoBriefing] = useState(false);
+  const [briefing, setBriefing] = useState("");
+  const [erroBriefing, setErroBriefing] = useState("");
 
   const visiveis = useMemo(
     () => (soMinhas && usuarioAtual ? tarefas.filter((t) => t.quem === usuarioAtual) : tarefas),
@@ -133,6 +137,35 @@ export function AreaHoje({ tarefas, usuarioAtual, onSelecionar, onMoverStatus }:
     };
   }, [visiveis, usuarioAtual, aging]);
 
+  function paraItemIA(t: TarefaComContexto): ItemBriefingIA {
+    return {
+      titulo: t.titulo,
+      cliente: t.cliente?.nome ?? "Sem cliente",
+      status: t.status,
+      diasDeAtraso: aging.get(t.id)?.diasDeAtraso,
+      bloqueio: t.bloqueios.find((b) => !b.resolvidoEm)?.motivo,
+    };
+  }
+
+  async function gerarBriefing() {
+    setGerandoBriefing(true);
+    setErroBriefing("");
+    try {
+      const texto = await gerarBriefingDiario({
+        usuarioAtual,
+        bloqueadas: grupos.bloqueadas.map(paraItemIA),
+        atrasadas: grupos.atrasadas.map(paraItemIA),
+        minhaAcao: grupos.minhaAcao.map(paraItemIA),
+        proximas: grupos.proximas.map(paraItemIA),
+      });
+      setBriefing(texto);
+    } catch (erro) {
+      setErroBriefing(erro instanceof Error ? erro.message : "Erro ao gerar o briefing.");
+    } finally {
+      setGerandoBriefing(false);
+    }
+  }
+
   const secoes = [
     {
       chave: "bloqueadas",
@@ -184,6 +217,26 @@ export function AreaHoje({ tarefas, usuarioAtual, onSelecionar, onMoverStatus }:
                 ? "Sem bloqueio, sem atraso e nada vencendo nos próximos 2 dias."
                 : "Cada missão aparece uma vez, na situação mais urgente dela."}
             </p>
+            {!nada && (
+              <button
+                type="button"
+                onClick={gerarBriefing}
+                disabled={gerandoBriefing}
+                className="mt-2 text-xs font-medium text-brand hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+              >
+                {gerandoBriefing
+                  ? "Gerando briefing..."
+                  : briefing
+                  ? "✨ Gerar de novo"
+                  : "✨ Gerar briefing do dia com IA"}
+              </button>
+            )}
+            {erroBriefing && <p className="mt-1 text-xs text-danger">{erroBriefing}</p>}
+            {briefing && (
+              <p className="mt-2 rounded-sm border border-accent/30 bg-accent-soft/60 p-3 text-sm leading-relaxed text-brand-dark">
+                {briefing}
+              </p>
+            )}
           </div>
 
           {usuarioAtual && (
