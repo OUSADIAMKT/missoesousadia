@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from "react";
 import type { TarefaComContexto } from "@/lib/types";
-import { corPrazo, corResponsavel, iniciais, isAtrasada, isProximaDoPrazo } from "@/lib/utils";
+import {
+  corPrazo,
+  corResponsavel,
+  corStatus,
+  formatDateBR,
+  iniciais,
+  isAtrasada,
+  isProximaDoPrazo,
+} from "@/lib/utils";
 import { formatMes } from "@/lib/performance-metrics";
 
 interface CalendarioMissoesProps {
@@ -40,8 +48,13 @@ export function CalendarioMissoes({ tarefas, onSelecionar }: CalendarioMissoesPr
   const agora = new Date();
   const [ano, setAno] = useState(agora.getFullYear());
   const [mesIndex0, setMesIndex0] = useState(agora.getMonth());
+  // Em telas estreitas, 7 colunas não cabem título nenhum — o card vira só
+  // um círculo com iniciais. Em vez disso, mobile mostra bolinhas por status
+  // e o dia inteiro é clicável, abrindo a lista completa aqui embaixo.
+  const [diaSelecionado, setDiaSelecionado] = useState<string | null>(null);
 
   const mesAnterior = () => {
+    setDiaSelecionado(null);
     if (mesIndex0 === 0) {
       setAno((a) => a - 1);
       setMesIndex0(11);
@@ -50,6 +63,7 @@ export function CalendarioMissoes({ tarefas, onSelecionar }: CalendarioMissoesPr
     }
   };
   const mesSeguinte = () => {
+    setDiaSelecionado(null);
     if (mesIndex0 === 11) {
       setAno((a) => a + 1);
       setMesIndex0(0);
@@ -58,6 +72,7 @@ export function CalendarioMissoes({ tarefas, onSelecionar }: CalendarioMissoesPr
     }
   };
   const irParaHoje = () => {
+    setDiaSelecionado(null);
     setAno(agora.getFullYear());
     setMesIndex0(agora.getMonth());
   };
@@ -154,12 +169,31 @@ export function CalendarioMissoes({ tarefas, onSelecionar }: CalendarioMissoesPr
           const doDia = tarefasPorDia.get(celula.iso) ?? [];
           const visiveis = doDia.slice(0, 3);
           const restantes = doDia.length - visiveis.length;
+          const temTarefas = doDia.length > 0;
+          const selecionada = diaSelecionado === celula.iso;
           return (
             <div
               key={celula.iso}
-              className={`min-h-[84px] rounded-lg border p-1 ${
+              role={temTarefas ? "button" : undefined}
+              tabIndex={temTarefas ? 0 : undefined}
+              onClick={() => {
+                if (!temTarefas) return;
+                setDiaSelecionado((atual) => (atual === celula.iso ? null : celula.iso));
+              }}
+              onKeyDown={(e) => {
+                if (!temTarefas) return;
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setDiaSelecionado((atual) => (atual === celula.iso ? null : celula.iso));
+                }
+              }}
+              className={`min-h-[84px] rounded-lg border p-1 text-left ${
+                temTarefas ? "cursor-pointer sm:cursor-default" : ""
+              } ${
                 celula.doMesAtual ? "border-neutral-200/80 bg-white" : "border-transparent bg-slate-50/60"
-              } ${celula.ehHoje ? "ring-2 ring-brand/50" : ""}`}
+              } ${celula.ehHoje ? "ring-2 ring-brand/50" : ""} ${
+                selecionada ? "border-brand sm:border-neutral-200/80" : ""
+              }`}
             >
               <span
                 className={`text-[11px] font-semibold ${
@@ -168,7 +202,24 @@ export function CalendarioMissoes({ tarefas, onSelecionar }: CalendarioMissoesPr
               >
                 {celula.dia}
               </span>
-              <div className="mt-1 flex flex-col gap-0.5">
+
+              {/* Mobile: só bolinhas por status — o título não cabe em 7 colunas
+                  numa tela de celular. Tocar no dia abre a lista completa abaixo
+                  da grade, em vez de tentar caber o texto na célula. */}
+              {temTarefas && (
+                <div className="mt-1 flex flex-wrap gap-0.5 sm:hidden">
+                  {doDia.slice(0, 6).map((t) => (
+                    <span
+                      key={t.id}
+                      className={`h-2 w-2 rounded-full border ${corStatus(t.status)}`}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* sm+: chip completo com título, como antes — cabe numa coluna
+                  de desktop/tablet. */}
+              <div className="mt-1 hidden flex-col gap-0.5 sm:flex">
                 {visiveis.map((t) => {
                   const atrasada = isAtrasada(t.prazoEntrega, t.status);
                   const proxima = isProximaDoPrazo(t.prazoEntrega, t.status);
@@ -176,7 +227,10 @@ export function CalendarioMissoes({ tarefas, onSelecionar }: CalendarioMissoesPr
                     <button
                       key={t.id}
                       type="button"
-                      onClick={() => onSelecionar(t)}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onSelecionar(t);
+                      }}
                       title={t.titulo}
                       className={`flex items-center gap-1 truncate rounded border px-1 py-0.5 text-left text-[10px] font-medium ${corPrazo(
                         atrasada,
@@ -202,6 +256,51 @@ export function CalendarioMissoes({ tarefas, onSelecionar }: CalendarioMissoesPr
           );
         })}
       </div>
+
+      {/* Lista do dia selecionado — só existe no mobile (sm:hidden), onde o
+          chip com título não cabe dentro da célula. */}
+      {diaSelecionado && (
+        <div className="mt-3 rounded-lg border border-border bg-background p-2 sm:hidden">
+          <div className="mb-1.5 flex items-center justify-between">
+            <span className="text-xs font-semibold text-foreground">
+              {formatDateBR(diaSelecionado)}
+            </span>
+            <button
+              type="button"
+              onClick={() => setDiaSelecionado(null)}
+              aria-label="Fechar"
+              className="text-muted hover:text-foreground"
+            >
+              ✕
+            </button>
+          </div>
+          <div className="flex flex-col gap-1.5">
+            {(tarefasPorDia.get(diaSelecionado) ?? []).map((t) => (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => onSelecionar(t)}
+                className="flex items-center gap-2 rounded-lg border border-border bg-white px-2.5 py-2 text-left text-xs"
+              >
+                <span className={`h-2 w-2 shrink-0 rounded-full border ${corStatus(t.status)}`} />
+                <span
+                  className={`grid h-6 w-6 shrink-0 place-items-center rounded-full border text-[10px] font-bold ${corResponsavel(
+                    t.quem
+                  )}`}
+                >
+                  {iniciais(t.quem)}
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate font-medium text-foreground">{t.titulo}</span>
+                  <span className="block truncate text-muted">
+                    {t.cliente?.nome ?? "Sem cliente"} · {t.status}
+                  </span>
+                </span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

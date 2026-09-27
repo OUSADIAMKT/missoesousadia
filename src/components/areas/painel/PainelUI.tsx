@@ -101,8 +101,8 @@ export function KpiTile({
     >
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
-          <div className="flex items-center gap-1.5">
-            <span className="truncate text-[11px] font-semibold uppercase tracking-wider text-slate-400">
+          <div className="flex items-start gap-1.5">
+            <span className="text-[11px] font-semibold uppercase leading-tight tracking-wider text-slate-400">
               {rotulo}
             </span>
             {ressalva && (
