@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import * as XLSX from "xlsx";
+import { gerarResumoExecutivo } from "@/lib/ia";
 import {
   Bar,
   BarChart,
@@ -155,6 +156,44 @@ export function AreaPerformance({
     [tarefas, clientesCadastrados, usuarios, mesCusto]
   );
 
+  const [gerandoResumoExecutivo, setGerandoResumoExecutivo] = useState(false);
+  const [resumoExecutivo, setResumoExecutivo] = useState("");
+  const [erroResumoExecutivo, setErroResumoExecutivo] = useState("");
+
+  async function gerarResumo() {
+    setGerandoResumoExecutivo(true);
+    setErroResumoExecutivo("");
+    try {
+      const texto = await gerarResumoExecutivo({
+        mesReferencia: formatMes(mesCusto),
+        total,
+        taxaConclusao: taxaConclusaoGlobal,
+        emAndamento: emAndamentoGlobal,
+        emRisco: emRiscoGlobal,
+        carga: carga.map((c) => ({ nome: c.nome, qtd: c.qtd, sobrecarregada: c.sobrecarregada })),
+        custosPorEntrega: custosPorEntrega.map((c) => ({
+          nome: c.nome,
+          custoPorEntrega: c.custoPorEntrega,
+          entregas: c.entregas,
+        })),
+        lucroPorCliente: lucro.porCliente.map((c) => ({
+          nome: c.nome,
+          margem: c.margem,
+          entregas: c.entregas,
+        })),
+        resultadoDoMes: lucro.resultado,
+        clienteLider: clienteLider
+          ? { nome: clienteLider.name, pctMissoes: pctClienteLider }
+          : undefined,
+      });
+      setResumoExecutivo(texto);
+    } catch (erro) {
+      setErroResumoExecutivo(erro instanceof Error ? erro.message : "Erro ao gerar o resumo.");
+    } finally {
+      setGerandoResumoExecutivo(false);
+    }
+  }
+
   function exportarRelatorio() {
     const wb = XLSX.utils.book_new();
 
@@ -241,7 +280,15 @@ export function AreaPerformance({
 
   return (
     <div className="flex flex-col gap-4 rounded-2xl bg-slate-950 p-4 text-slate-100 sm:p-5">
-      <div className="flex items-center justify-end">
+      <div className="flex flex-wrap items-center justify-end gap-2">
+        <button
+          type="button"
+          onClick={gerarResumo}
+          disabled={gerandoResumoExecutivo}
+          className="rounded-lg border border-slate-700 bg-slate-800 px-3 py-1.5 text-xs font-semibold text-slate-100 transition hover:border-orange-500 hover:text-white disabled:cursor-not-allowed disabled:opacity-50"
+        >
+          {gerandoResumoExecutivo ? "Gerando..." : "✨ Resumo executivo com IA"}
+        </button>
         <button
           type="button"
           onClick={exportarRelatorio}
@@ -250,6 +297,18 @@ export function AreaPerformance({
           ⬇ Exportar relatório (.xlsx)
         </button>
       </div>
+
+      {erroResumoExecutivo && (
+        <p className="text-xs text-rose-400">{erroResumoExecutivo}</p>
+      )}
+      {resumoExecutivo && (
+        <div className="rounded-xl border border-orange-500/30 bg-orange-500/5 p-4">
+          <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-orange-400">
+            Resumo executivo · {formatMes(mesCusto)}
+          </p>
+          <p className="text-sm leading-relaxed text-slate-200">{resumoExecutivo}</p>
+        </div>
+      )}
 
       {/* KPIs */}
       <div className="grid grid-cols-2 gap-4 xl:grid-cols-4">
