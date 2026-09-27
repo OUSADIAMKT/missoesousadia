@@ -2,11 +2,13 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import type { Apontamento, Cliente, Complexidade, Status, TarefaComContexto, Vinculo } from "./types.ts";
 import {
+  atividadeNoMes,
   custoPorEntregaNoMes,
   formatMes,
   lucroPorClienteNoMes,
   mesesComEntrega,
   sugerirHorasApontamento,
+  volumePorMes,
   type PessoaComCusto,
 } from "./performance-metrics.ts";
 
@@ -23,6 +25,7 @@ function missao(
     complexidade?: Complexidade;
     horasEstimadas?: number;
     apontamentos?: Apontamento[];
+    dataRegistro?: string;
   } = {}
 ): TarefaComContexto {
   return {
@@ -30,7 +33,7 @@ function missao(
     titulo: "Missão",
     projetoId: "p1",
     descricao: "",
-    dataRegistro: "2026-08-01",
+    dataRegistro: extras.dataRegistro ?? "2026-08-01",
     dataInicio: "2026-08-01",
     prazoEntrega: "2026-09-30",
     prioridade: "Normal",
@@ -309,4 +312,36 @@ test("sugerirHorasApontamento cai no padrão por complexidade sem estimativa nem
   const sugestao = sugerirHorasApontamento(alvo, [alvo]);
   assert.equal(sugestao.horas, 3);
   assert.equal(sugestao.origem, "padrao");
+});
+
+test("atividadeNoMes inclui missão concluída no mês", () => {
+  const alvo = missao("Eliseu", "Concluído", "2026-09-10");
+  assert.deepEqual(atividadeNoMes([alvo], "2026-09"), [alvo]);
+});
+
+test("atividadeNoMes inclui missão com qualquer mudança de status no mês, não só a última", () => {
+  const alvo = missao("Eliseu", "Em Andamento", "2026-08-05");
+  alvo.historico = [
+    { id: "h1", statusAnterior: "A Fazer", statusNovo: "Em Andamento", usuario: "Eliseu", data: "2026-09-02T10:00:00.000Z" },
+    { id: "h2", statusAnterior: null, statusNovo: "A Fazer", usuario: "Eliseu", data: "2026-08-05T10:00:00.000Z" },
+  ];
+  assert.deepEqual(atividadeNoMes([alvo], "2026-08"), [alvo]);
+});
+
+test("atividadeNoMes deixa de fora missão sem nenhuma entrada de histórico no mês", () => {
+  const alvo = missao("Eliseu", "Concluído", "2026-08-10");
+  assert.deepEqual(atividadeNoMes([alvo], "2026-09"), []);
+});
+
+test("volumePorMes conta criadas pela data de registro e concluídas pela conclusão", () => {
+  const tarefas = [
+    missao("Eliseu", "Concluído", "2026-09-15", { dataRegistro: "2026-09-01" }),
+    missao("Eliseu", "Em Andamento", "2026-09-05", { dataRegistro: "2026-09-03" }),
+    missao("Bruno", "Concluído", "2026-08-20", { dataRegistro: "2026-07-25" }),
+  ];
+  const [ago, set] = volumePorMes(tarefas, ["2026-08", "2026-09"]);
+  assert.equal(ago.criadas, 0);
+  assert.equal(ago.concluidas, 1);
+  assert.equal(set.criadas, 2);
+  assert.equal(set.concluidas, 1);
 });

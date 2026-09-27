@@ -566,6 +566,37 @@ export function formatMes(mesISO: string): string {
 }
 
 // ---------------------------------------------------------------------------
+// ATIVIDADE E VOLUME POR MÊS — para o relatório por cliente/colaborador
+// (filtrar pra um mês específico) e para a tendência de volume no topo da
+// Performance. "Atividade" é qualquer entrada do histórico dentro do mês —
+// cobre criação, toda mudança de status e conclusão, não só o desfecho final.
+// ---------------------------------------------------------------------------
+
+export function atividadeNoMes(tarefas: TarefaComContexto[], mesISO: string): TarefaComContexto[] {
+  return tarefas.filter((t) => t.historico.some((h) => h.data.slice(0, 7) === mesISO));
+}
+
+export interface VolumeMensal {
+  mes: string;
+  rotulo: string;
+  criadas: number;
+  concluidas: number;
+}
+
+// Criadas: pela data de registro. Concluídas: mesma definição de
+// mesDeConclusao usada em custoPorEntregaNoMes/lucroPorClienteNoMes — uma
+// missão criada num mês pode concluir em outro, os dois números não somam
+// entre si de propósito.
+export function volumePorMes(tarefas: TarefaComContexto[], meses: string[]): VolumeMensal[] {
+  return meses.map((mes) => ({
+    mes,
+    rotulo: formatMes(mes),
+    criadas: tarefas.filter((t) => t.dataRegistro.slice(0, 7) === mes).length,
+    concluidas: tarefas.filter((t) => mesDeConclusao(t) === mes).length,
+  }));
+}
+
+// ---------------------------------------------------------------------------
 // LUCRO POR CLIENTE (Fase 2) — margem de contribuição, não lucro final.
 //
 // Junta as três fontes de dinheiro que o sistema já conhece:

@@ -31,11 +31,13 @@ import {
   iniciais,
 } from "@/lib/utils";
 import {
+  atividadeNoMes,
   calcularCargaPorPessoa,
   custoPorEntregaNoMes,
   formatMes,
   lucroPorClienteNoMes,
   mesesComEntrega,
+  volumePorMes,
 } from "@/lib/performance-metrics";
 import { CardPainel, KpiTile, LegendaStatus, TooltipEscuro } from "./painel/PainelUI";
 import { EspelhoColaborador } from "./EspelhoColaborador";
@@ -144,6 +146,15 @@ export function AreaPerformance({
   // inclui o mês corrente, então `meses[0]` nunca é undefined e o seletor não
   // precisa de estado inicial calculado por efeito.
   const meses = useMemo(() => mesesComEntrega(tarefas), [tarefas]);
+
+  // Tendência de volume — últimos 6 meses com entrega (ou menos), mais antigo
+  // primeiro. Criadas e concluídas não somam entre si de propósito: uma
+  // missão criada num mês pode concluir só no seguinte.
+  const historicoVolume = useMemo(
+    () => volumePorMes(tarefas, [...meses].slice(0, 6).reverse()),
+    [tarefas, meses]
+  );
+
   const [mesEscolhido, setMesEscolhido] = useState("");
   const mesCusto = meses.includes(mesEscolhido) ? mesEscolhido : meses[0];
   const custosPorEntrega = useMemo(
@@ -294,16 +305,24 @@ export function AreaPerformance({
   }
 
   const [visao, setVisao] = useState<VisaoRelatorio>("cliente");
+  // "" = todos os meses (comportamento de sempre). Escolher um mês restringe
+  // o relatório às missões com QUALQUER atividade naquele mês (criação,
+  // mudança de status ou conclusão) — não só as concluídas nele.
+  const [mesRelatorio, setMesRelatorio] = useState("");
+  const tarefasDoMesRelatorio = useMemo(
+    () => (mesRelatorio ? atividadeNoMes(tarefas, mesRelatorio) : tarefas),
+    [tarefas, mesRelatorio]
+  );
   const [clienteId, setClienteId] = useState("");
   const clienteSelecionado = clientes.find((c) => c.id === clienteId);
   const tarefasDoCliente = useMemo(
-    () => tarefas.filter((t) => t.cliente?.id === clienteId),
-    [tarefas, clienteId]
+    () => tarefasDoMesRelatorio.filter((t) => t.cliente?.id === clienteId),
+    [tarefasDoMesRelatorio, clienteId]
   );
   const [colaboradorNome, setColaboradorNome] = useState("");
   const tarefasDoColaborador = useMemo(
-    () => tarefas.filter((t) => t.quem === colaboradorNome),
-    [tarefas, colaboradorNome]
+    () => tarefasDoMesRelatorio.filter((t) => t.quem === colaboradorNome),
+    [tarefasDoMesRelatorio, colaboradorNome]
   );
 
   const classeSelect =
@@ -370,6 +389,52 @@ export function AreaPerformance({
           alerta={emRiscoGlobal > 0}
         />
       </div>
+
+      {/* Tendência de volume — complementa os KPIs acima (que são sempre o
+          total acumulado) com a evolução mês a mês. */}
+      {historicoVolume.length > 1 && (
+        <CardPainel
+          titulo="Volume de missões — últimos meses"
+          legenda={`${historicoVolume[0].rotulo} a ${historicoVolume[historicoVolume.length - 1].rotulo}`}
+        >
+          <div className="min-w-0">
+            <ResponsiveContainer width="100%" height={160}>
+              <BarChart data={historicoVolume} margin={{ left: 4, right: 4 }}>
+                <XAxis
+                  dataKey="rotulo"
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis hide allowDecimals={false} />
+                <Tooltip content={TooltipEscuro} cursor={{ fill: "#1e293b80" }} />
+                <Bar
+                  dataKey="criadas"
+                  name="Criadas"
+                  fill="#38BDF8"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={false}
+                />
+                <Bar
+                  dataKey="concluidas"
+                  name="Concluídas"
+                  fill="#10B981"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={false}
+                />
+              </BarChart>
+            </ResponsiveContainer>
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 border-t border-slate-800 pt-2 text-[11px] text-slate-400">
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-sm bg-sky-400" /> Criadas
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2 w-2 rounded-sm bg-emerald-500" /> Concluídas
+              </span>
+            </div>
+          </div>
+        </CardPainel>
+      )}
 
       {/* Donut de status + carga empilhada */}
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-2">
@@ -832,6 +897,20 @@ export function AreaPerformance({
             Relatório por {visao === "cliente" ? "cliente" : "colaborador"}
           </h3>
           <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={mesRelatorio}
+              onChange={(e) => setMesRelatorio(e.target.value)}
+              aria-label="Mês do relatório"
+              className={classeSelect}
+            >
+              <option value="">Todos os meses</option>
+              {meses.map((m) => (
+                <option key={m} value={m}>
+                  {formatMes(m)}
+                </option>
+              ))}
+            </select>
+
             <div className="inline-flex rounded-lg border border-slate-700 bg-slate-800 p-1">
               {(["cliente", "colaborador"] as const).map((v) => (
                 <button
@@ -883,13 +962,13 @@ export function AreaPerformance({
         {visao === "cliente" && !clienteSelecionado && (
           <p className="mt-3 text-sm text-slate-400">
             Escolha um cliente para ver o que foi feito, o que falta, esforço estimado e quem
-            esteve envolvido.
+            esteve envolvido{mesRelatorio ? ` em ${formatMes(mesRelatorio)}` : ""}.
           </p>
         )}
         {visao === "colaborador" && !colaboradorNome && (
           <p className="mt-3 text-sm text-slate-400">
             Escolha um colaborador para ver entregas, confiabilidade e carga — sempre comparado
-            com a média do time.
+            com a média do time{mesRelatorio ? ` em ${formatMes(mesRelatorio)}` : ""}.
           </p>
         )}
       </CardPainel>
@@ -901,7 +980,7 @@ export function AreaPerformance({
         <EspelhoColaborador
           colaboradorNome={colaboradorNome}
           tarefasDoColaborador={tarefasDoColaborador}
-          todasTarefas={tarefas}
+          todasTarefas={tarefasDoMesRelatorio}
         />
       )}
 
