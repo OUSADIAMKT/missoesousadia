@@ -301,6 +301,7 @@ export default function Home() {
       <TarefaForm
         aberto={formAberto}
         tarefaEmEdicao={tarefaEmEdicao}
+        tarefas={tarefasComContexto}
         usuarios={usuarios}
         clientes={estrutura.clientes}
         projetos={estrutura.projetos}

@@ -1,11 +1,12 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import type { Cliente, Status, TarefaComContexto, Vinculo } from "./types.ts";
+import type { Apontamento, Cliente, Complexidade, Status, TarefaComContexto, Vinculo } from "./types.ts";
 import {
   custoPorEntregaNoMes,
   formatMes,
   lucroPorClienteNoMes,
   mesesComEntrega,
+  sugerirHorasApontamento,
   type PessoaComCusto,
 } from "./performance-metrics.ts";
 
@@ -16,10 +17,16 @@ function missao(
   quem: string,
   status: Status,
   concluidaEm: string,
-  extras: { cliente?: Cliente; custoExecucao?: number } = {}
+  extras: {
+    cliente?: Cliente;
+    custoExecucao?: number;
+    complexidade?: Complexidade;
+    horasEstimadas?: number;
+    apontamentos?: Apontamento[];
+  } = {}
 ): TarefaComContexto {
   return {
-    id: `${quem}-${concluidaEm}-${status}`,
+    id: `${quem}-${concluidaEm}-${status}-${Math.random()}`,
     titulo: "Missão",
     projetoId: "p1",
     descricao: "",
@@ -27,7 +34,8 @@ function missao(
     dataInicio: "2026-08-01",
     prazoEntrega: "2026-09-30",
     prioridade: "Normal",
-    complexidade: "Simples",
+    complexidade: extras.complexidade ?? "Simples",
+    horasEstimadas: extras.horasEstimadas,
     status,
     quem,
     custoExecucao: extras.custoExecucao,
@@ -35,7 +43,7 @@ function missao(
     bloqueios: [],
     anexos: [],
     comentarios: [],
-    apontamentos: [],
+    apontamentos: extras.apontamentos ?? [],
     historico: [
       { id: "h1", statusAnterior: "Em Andamento", statusNovo: status, usuario: quem, data: `${concluidaEm}T12:00:00.000Z` },
     ],
@@ -268,4 +276,37 @@ test("lucroPorClienteNoMes conta quantos clientes ficaram fora do resultado", ()
   const resultado = lucroPorClienteNoMes([], [ekilibre, semValor], [], "2026-09");
   assert.equal(resultado.resultado, 3000);
   assert.equal(resultado.clientesSemReceita, 1);
+});
+
+test("sugerirHorasApontamento usa horasEstimadas quando a missão já tem uma", () => {
+  const alvo = missao("Eliseu", "Concluído", "2026-09-10", { horasEstimadas: 4 });
+  const sugestao = sugerirHorasApontamento(alvo, [alvo]);
+  assert.equal(sugestao.horas, 4);
+  assert.equal(sugestao.origem, "estimativa");
+});
+
+test("sugerirHorasApontamento usa a mediana de missões de complexidade igual quando não há estimativa", () => {
+  const alvo = missao("Eliseu", "Concluído", "2026-09-10", { complexidade: "Complexa" });
+  const semelhante1 = missao("Bruno", "Concluído", "2026-09-05", {
+    complexidade: "Complexa",
+    apontamentos: [{ id: "a1", usuario: "Bruno", horas: 4, data: "2026-09-05" }],
+  });
+  const semelhante2 = missao("Bruno", "Concluído", "2026-09-06", {
+    complexidade: "Complexa",
+    apontamentos: [{ id: "a2", usuario: "Bruno", horas: 8, data: "2026-09-06" }],
+  });
+  const diferente = missao("Bruno", "Concluído", "2026-09-07", {
+    complexidade: "Simples",
+    apontamentos: [{ id: "a3", usuario: "Bruno", horas: 100, data: "2026-09-07" }],
+  });
+  const sugestao = sugerirHorasApontamento(alvo, [alvo, semelhante1, semelhante2, diferente]);
+  assert.equal(sugestao.horas, 6);
+  assert.equal(sugestao.origem, "historico");
+});
+
+test("sugerirHorasApontamento cai no padrão por complexidade sem estimativa nem histórico", () => {
+  const alvo = missao("Eliseu", "Concluído", "2026-09-10", { complexidade: "Média" });
+  const sugestao = sugerirHorasApontamento(alvo, [alvo]);
+  assert.equal(sugestao.horas, 3);
+  assert.equal(sugestao.origem, "padrao");
 });

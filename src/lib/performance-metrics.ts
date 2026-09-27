@@ -1,6 +1,7 @@
 import {
   STATUSES_CONCLUIDOS,
   VINCULOS_CUSTO_FIXO,
+  type Complexidade,
   type Status,
   type TarefaComContexto,
   type Vinculo,
@@ -287,6 +288,49 @@ export function horasReaisDeTarefas(tarefas: TarefaComContexto[]): HorasReaisPor
       horasReais: t.apontamentos.reduce((soma, a) => soma + a.horas, 0),
     }))
     .filter((h) => h.horasReais > 0);
+}
+
+// ---------------------------------------------------------------------------
+// SUGESTÃO DE HORAS AO CONCLUIR (lembrete de apontamento) — heurística pura,
+// de propósito SEM chamada de IA: é uma estimativa numérica, não geração de
+// texto, e uma conta local é mais confiável e instantânea que ida e volta
+// numa API paga pra "adivinhar um número". Ordem de preferência:
+//   1. horasEstimadas da própria missão (o que já foi combinado)
+//   2. mediana de horas reais já apontadas em missões de complexidade igual
+//   3. um padrão fixo por complexidade, só pra nunca devolver vazio
+// ---------------------------------------------------------------------------
+
+export type OrigemSugestaoHoras = "estimativa" | "historico" | "padrao";
+
+export interface SugestaoHoras {
+  horas: number;
+  origem: OrigemSugestaoHoras;
+}
+
+const HORAS_PADRAO_POR_COMPLEXIDADE: Record<Complexidade, number> = {
+  Simples: 1,
+  Média: 3,
+  Complexa: 6,
+};
+
+export function sugerirHorasApontamento(
+  tarefa: TarefaComContexto,
+  todasTarefas: TarefaComContexto[]
+): SugestaoHoras {
+  if (tarefa.horasEstimadas && tarefa.horasEstimadas > 0) {
+    return { horas: tarefa.horasEstimadas, origem: "estimativa" };
+  }
+
+  const horasDeSemelhantes = todasTarefas
+    .filter((t) => t.id !== tarefa.id && t.complexidade === tarefa.complexidade)
+    .map((t) => t.apontamentos.reduce((soma, a) => soma + a.horas, 0))
+    .filter((h) => h > 0);
+
+  if (horasDeSemelhantes.length > 0) {
+    return { horas: Math.round(mediana(horasDeSemelhantes) * 2) / 2, origem: "historico" };
+  }
+
+  return { horas: HORAS_PADRAO_POR_COMPLEXIDADE[tarefa.complexidade], origem: "padrao" };
 }
 
 export interface MetricaIndisponivel {

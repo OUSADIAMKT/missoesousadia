@@ -1,10 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   COMPLEXIDADES,
   PRIORIDADES,
   STATUSES,
+  STATUSES_CONCLUIDOS,
   type Cliente,
   type Complexidade,
   type NovaTarefa,
@@ -16,10 +17,18 @@ import {
 } from "@/lib/types";
 import { corResponsavel, formatDateBR, formatDateTimeBR, formatTamanhoArquivo, iniciais } from "@/lib/utils";
 import { TAMANHO_MAXIMO_ANEXO } from "@/lib/useTarefas";
+import { sugerirHorasApontamento } from "@/lib/performance-metrics";
+import {
+  estimarMissao,
+  gerarRascunhoEntrega,
+  resumirMissao,
+  sugerirCobranca,
+} from "@/lib/ia";
 
 interface TarefaFormProps {
   aberto: boolean;
   tarefaEmEdicao: TarefaComContexto | null;
+  tarefas: TarefaComContexto[];
   usuarios: Usuario[];
   clientes: Cliente[];
   projetos: Projeto[];
@@ -101,6 +110,7 @@ function valorDeEdicao(tarefa: TarefaComContexto): FormState {
 export function TarefaForm({
   aberto,
   tarefaEmEdicao,
+  tarefas,
   usuarios,
   clientes,
   projetos,
@@ -129,6 +139,25 @@ export function TarefaForm({
   const [apontHoras, setApontHoras] = useState("");
   const [apontData, setApontData] = useState(hoje());
   const [erroSalvar, setErroSalvar] = useState("");
+
+  // --- IA: estado de cada recurso (ver src/app/api/ia/) ---------------------
+  const [gerandoEstimativa, setGerandoEstimativa] = useState(false);
+  const [erroEstimativa, setErroEstimativa] = useState("");
+  const [justificativaEstimativa, setJustificativaEstimativa] = useState("");
+
+  const [gerandoRascunho, setGerandoRascunho] = useState(false);
+  const [rascunho, setRascunho] = useState("");
+  const [erroRascunho, setErroRascunho] = useState("");
+
+  const [gerandoCobranca, setGerandoCobranca] = useState(false);
+  const [cobranca, setCobranca] = useState("");
+  const [erroCobranca, setErroCobranca] = useState("");
+
+  const [gerandoResumoMissao, setGerandoResumoMissao] = useState(false);
+  const [resumoMissao, setResumoMissao] = useState("");
+  const [erroResumoMissao, setErroResumoMissao] = useState("");
+
+  const [registrandoSugestaoHoras, setRegistrandoSugestaoHoras] = useState(false);
   const tituloRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -152,6 +181,14 @@ export function TarefaForm({
     setApontHoras("");
     setApontData(hoje());
     setErroSalvar("");
+    setErroEstimativa("");
+    setJustificativaEstimativa("");
+    setRascunho("");
+    setErroRascunho("");
+    setCobranca("");
+    setErroCobranca("");
+    setResumoMissao("");
+    setErroResumoMissao("");
     if (aberto) tituloRef.current?.focus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tarefaEmEdicao?.id, aberto]);
@@ -164,6 +201,26 @@ export function TarefaForm({
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
   }, [aberto, onFechar]);
+
+  // Dias desde que a missão entrou em "Aguardando Cliente" pela última vez —
+  // usa o histórico (persistido), não `dados.status` (edição ainda não salva),
+  // porque é tempo real de espera que se está medindo.
+  const diasAguardandoCliente = useMemo(() => {
+    if (!tarefaEmEdicao || tarefaEmEdicao.status !== "Aguardando Cliente") return null;
+    const entrada = tarefaEmEdicao.historico.find((h) => h.statusNovo === "Aguardando Cliente");
+    if (!entrada) return null;
+    const ms = new Date().getTime() - new Date(entrada.data).getTime();
+    return Math.max(0, Math.floor(ms / (1000 * 60 * 60 * 24)));
+  }, [tarefaEmEdicao]);
+
+  // Idea 6: só sugere quando a missão está indo pra Concluído/Aprovado sem
+  // nenhum apontamento ainda — é o "lembrete", não aparece o tempo todo.
+  const sugestaoHoras = useMemo(() => {
+    if (!tarefaEmEdicao) return null;
+    if (dados.status !== "Concluído" && dados.status !== "Aprovado") return null;
+    if (tarefaEmEdicao.apontamentos.length > 0) return null;
+    return sugerirHorasApontamento(tarefaEmEdicao, tarefas);
+  }, [tarefaEmEdicao, dados.status, tarefas]);
 
   if (!aberto) return null;
 
@@ -279,6 +336,115 @@ export function TarefaForm({
   async function removerApontamento(id: string) {
     if (!window.confirm("Remover este apontamento de horas?")) return;
     await onRemoverApontamento(id);
+  }
+
+  async function aceitarSugestaoHoras() {
+    if (!tarefaEmEdicao || !sugestaoHoras) return;
+    setRegistrandoSugestaoHoras(true);
+    await onAdicionarApontamento(tarefaEmEdicao.id, tarefaEmEdicao.quem, sugestaoHoras.horas, hoje());
+    setRegistrandoSugestaoHoras(false);
+  }
+
+  async function gerarEstimativa() {
+    if (!dados.titulo.trim()) return;
+    setGerandoEstimativa(true);
+    setErroEstimativa("");
+    try {
+      const historico = tarefas
+        .filter((t) => STATUSES_CONCLUIDOS.includes(t.status))
+        .slice(0, 15)
+        .map((t) => ({
+          titulo: t.titulo,
+          complexidade: t.complexidade,
+          prioridade: t.prioridade,
+          horasEstimadas: t.horasEstimadas,
+        }));
+      const estimativa = await estimarMissao({
+        titulo: dados.titulo,
+        descricao: dados.descricao,
+        tags: dados.tags,
+        cliente: dados.clienteNome,
+        historico,
+      });
+      setDados((d) => ({
+        ...d,
+        prioridade: estimativa.prioridade as Prioridade,
+        complexidade: estimativa.complexidade as Complexidade,
+        horasEstimadas: String(estimativa.horasEstimadas),
+      }));
+      setJustificativaEstimativa(estimativa.justificativa);
+    } catch (erro) {
+      setErroEstimativa(erro instanceof Error ? erro.message : "Erro ao gerar estimativa.");
+    } finally {
+      setGerandoEstimativa(false);
+    }
+  }
+
+  async function gerarRascunho() {
+    if (!dados.titulo.trim()) return;
+    setGerandoRascunho(true);
+    setErroRascunho("");
+    try {
+      const texto = await gerarRascunhoEntrega({
+        titulo: dados.titulo,
+        descricao: dados.descricao,
+        tags: dados.tags,
+        cliente: dados.clienteNome,
+      });
+      setRascunho(texto);
+    } catch (erro) {
+      setErroRascunho(erro instanceof Error ? erro.message : "Erro ao gerar rascunho.");
+    } finally {
+      setGerandoRascunho(false);
+    }
+  }
+
+  async function gerarCobranca() {
+    if (!tarefaEmEdicao || diasAguardandoCliente === null) return;
+    setGerandoCobranca(true);
+    setErroCobranca("");
+    try {
+      const texto = await sugerirCobranca({
+        titulo: tarefaEmEdicao.titulo,
+        cliente: tarefaEmEdicao.cliente?.nome ?? "",
+        dias: diasAguardandoCliente,
+      });
+      setCobranca(texto);
+    } catch (erro) {
+      setErroCobranca(erro instanceof Error ? erro.message : "Erro ao gerar sugestão.");
+    } finally {
+      setGerandoCobranca(false);
+    }
+  }
+
+  async function gerarResumoDaMissao() {
+    if (!tarefaEmEdicao) return;
+    setGerandoResumoMissao(true);
+    setErroResumoMissao("");
+    try {
+      const texto = await resumirMissao({
+        titulo: tarefaEmEdicao.titulo,
+        comentarios: tarefaEmEdicao.comentarios.map((c) => ({ autor: c.autor, texto: c.texto })),
+        bloqueios: tarefaEmEdicao.bloqueios.map((b) => ({
+          motivo: b.motivo,
+          resolvido: !!b.resolvidoEm,
+        })),
+      });
+      setResumoMissao(texto);
+    } catch (erro) {
+      setErroResumoMissao(erro instanceof Error ? erro.message : "Erro ao gerar resumo.");
+    } finally {
+      setGerandoResumoMissao(false);
+    }
+  }
+
+  async function copiar(texto: string) {
+    try {
+      await navigator.clipboard.writeText(texto);
+    } catch {
+      // Sem permissão de clipboard não é um erro que vale interromper o
+      // usuário com um alerta — o texto já está visível pra selecionar à mão.
+    }
   }
 
   async function excluir() {
@@ -404,6 +570,36 @@ export function TarefaForm({
               placeholder="Detalhes da missão..."
               className="w-full resize-none rounded-lg border border-border bg-background px-3 py-2 text-sm outline-none focus:border-brand focus:ring-2 focus:ring-brand/20"
             />
+            <div className="mt-1.5 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={gerarRascunho}
+                disabled={!dados.titulo.trim() || gerandoRascunho}
+                className="text-xs font-medium text-brand hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+              >
+                {gerandoRascunho ? "Gerando rascunho..." : "✨ Gerar rascunho da entrega com IA"}
+              </button>
+            </div>
+            {erroRascunho && <p className="mt-1 text-xs text-danger">{erroRascunho}</p>}
+            {rascunho && (
+              <div className="mt-2 rounded-sm border border-accent/30 bg-accent-soft/60 p-2.5">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <span className="text-[11px] font-semibold uppercase tracking-wide text-brand-dark">
+                    Rascunho gerado — revise antes de usar
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => copiar(rascunho)}
+                    className="text-xs font-medium text-brand hover:underline"
+                  >
+                    Copiar
+                  </button>
+                </div>
+                <p className="max-h-40 overflow-y-auto whitespace-pre-wrap text-xs text-foreground">
+                  {rascunho}
+                </p>
+              </div>
+            )}
           </div>
 
           <div>
@@ -449,6 +645,25 @@ export function TarefaForm({
               </button>
             </div>
           </div>
+
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={gerarEstimativa}
+              disabled={!dados.titulo.trim() || gerandoEstimativa}
+              className="text-xs font-medium text-brand hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+            >
+              {gerandoEstimativa
+                ? "Estimando..."
+                : "✨ Sugerir prioridade, complexidade e horas com IA"}
+            </button>
+          </div>
+          {erroEstimativa && <p className="-mt-2 text-xs text-danger">{erroEstimativa}</p>}
+          {justificativaEstimativa && (
+            <p className="-mt-2 text-xs text-muted">
+              IA sugeriu: {justificativaEstimativa} — revise antes de salvar.
+            </p>
+          )}
 
           <div className="grid grid-cols-2 gap-4">
             <div>
@@ -539,6 +754,44 @@ export function TarefaForm({
             />
           </div>
 
+          {diasAguardandoCliente !== null && (
+            <div className="rounded-sm border border-accent/30 bg-accent-soft/60 p-2.5">
+              <p className="text-xs text-brand-dark">
+                Esperando o cliente há{" "}
+                <strong>
+                  {diasAguardandoCliente} dia{diasAguardandoCliente === 1 ? "" : "s"}
+                </strong>
+                .
+              </p>
+              <button
+                type="button"
+                onClick={gerarCobranca}
+                disabled={gerandoCobranca}
+                className="mt-1 text-xs font-medium text-brand hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+              >
+                {gerandoCobranca ? "Gerando..." : "✨ Sugerir mensagem de cobrança com IA"}
+              </button>
+              {erroCobranca && <p className="mt-1 text-xs text-danger">{erroCobranca}</p>}
+              {cobranca && (
+                <div className="mt-2 rounded-sm border border-border bg-white p-2">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      Pronta pra copiar
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => copiar(cobranca)}
+                      className="text-xs font-medium text-brand hover:underline"
+                    >
+                      Copiar
+                    </button>
+                  </div>
+                  <p className="text-xs text-foreground">{cobranca}</p>
+                </div>
+              )}
+            </div>
+          )}
+
           {pagoPorProjeto && (
             <div>
               <label className="mb-1 block text-sm font-medium text-foreground">
@@ -615,9 +868,25 @@ export function TarefaForm({
 
           {tarefaEmEdicao && (
             <div className="border-t border-border pt-4">
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-muted">
+              <p className="mb-2 flex items-center justify-between text-xs font-semibold uppercase tracking-wide text-muted">
                 Comentários
+                {tarefaEmEdicao.comentarios.length + tarefaEmEdicao.bloqueios.length >= 3 && (
+                  <button
+                    type="button"
+                    onClick={gerarResumoDaMissao}
+                    disabled={gerandoResumoMissao}
+                    className="text-[11px] font-medium normal-case tracking-normal text-brand hover:underline disabled:cursor-not-allowed disabled:opacity-50 disabled:no-underline"
+                  >
+                    {gerandoResumoMissao ? "Resumindo..." : "✨ Resumir com IA"}
+                  </button>
+                )}
               </p>
+              {erroResumoMissao && <p className="mb-2 text-xs text-danger">{erroResumoMissao}</p>}
+              {resumoMissao && (
+                <p className="mb-2 rounded-sm border border-accent/30 bg-accent-soft/60 p-2 text-xs text-brand-dark">
+                  {resumoMissao}
+                </p>
+              )}
               {tarefaEmEdicao.comentarios.length > 0 && (
                 <ul className="mb-2 max-h-40 space-y-2 overflow-y-auto pr-1">
                   {tarefaEmEdicao.comentarios.map((c) => (
@@ -729,6 +998,28 @@ export function TarefaForm({
                   </span>
                 )}
               </p>
+              {sugestaoHoras && (
+                <div className="mb-2 flex flex-wrap items-center justify-between gap-2 rounded-sm border border-accent/30 bg-accent-soft/60 p-2.5 text-xs text-brand-dark">
+                  <span>
+                    Concluída sem horas apontadas. Sugestão: <strong>{sugestaoHoras.horas}h</strong>{" "}
+                    para {tarefaEmEdicao.quem}
+                    {sugestaoHoras.origem === "estimativa"
+                      ? " (a estimativa da missão)"
+                      : sugestaoHoras.origem === "historico"
+                      ? " (mediana de missões parecidas)"
+                      : " (padrão para essa complexidade)"}
+                    .
+                  </span>
+                  <button
+                    type="button"
+                    onClick={aceitarSugestaoHoras}
+                    disabled={registrandoSugestaoHoras}
+                    className="shrink-0 rounded-sm border border-brand/40 bg-white px-2.5 py-1 font-medium text-brand hover:bg-brand/5 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {registrandoSugestaoHoras ? "Registrando..." : "Aceitar e registrar"}
+                  </button>
+                </div>
+              )}
               {tarefaEmEdicao.apontamentos.length > 0 && (
                 <ul className="mb-2 space-y-1.5">
                   {tarefaEmEdicao.apontamentos.map((a) => (
