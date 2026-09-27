@@ -156,6 +156,37 @@ export function AreaPerformance({
     [tarefas, clientesCadastrados, usuarios, mesCusto]
   );
 
+  // Tendência de lucro: os últimos 6 meses com entrega (ou menos, se o
+  // histórico for mais curto), do mais antigo pro mais recente — pra ler da
+  // esquerda pra direita como uma linha do tempo, não como o dropdown acima
+  // (que é sempre "este mês" por padrão).
+  const historicoLucro = useMemo(() => {
+    const ultimosMeses = [...meses].slice(0, 6).reverse();
+    return ultimosMeses.map((m) => ({
+      mes: m,
+      rotulo: formatMes(m),
+      dados: lucroPorClienteNoMes(tarefas, clientesCadastrados, usuarios, m),
+    }));
+  }, [meses, tarefas, clientesCadastrados, usuarios]);
+
+  // Mesmo conjunto de clientes em todo mês (lucroPorClienteNoMes sempre
+  // devolve todo `clientesCadastrados`), então pega a lista do primeiro ponto
+  // — só precisa de id+nome pra montar a tabela linha por cliente.
+  const clientesNoHistorico = useMemo(() => {
+    const porId = new Map<string, string>();
+    for (const ponto of historicoLucro) {
+      for (const c of ponto.dados.porCliente) porId.set(c.clienteId, c.nome);
+    }
+    return Array.from(porId, ([id, nome]) => ({ id, nome })).sort((a, b) =>
+      a.nome.localeCompare(b.nome)
+    );
+  }, [historicoLucro]);
+
+  const resultadoPorMes = useMemo(
+    () => historicoLucro.map((p) => ({ rotulo: p.rotulo, resultado: p.dados.resultado })),
+    [historicoLucro]
+  );
+
   const [gerandoResumoExecutivo, setGerandoResumoExecutivo] = useState(false);
   const [resumoExecutivo, setResumoExecutivo] = useState("");
   const [erroResumoExecutivo, setErroResumoExecutivo] = useState("");
@@ -700,6 +731,99 @@ export function AreaPerformance({
           </div>
         )}
       </CardPainel>
+
+      {/* Lucro por cliente ao longo do tempo — comparação entre meses, não só
+          o mês selecionado nos dois cards acima. */}
+      {historicoLucro.length > 1 && (
+        <CardPainel
+          titulo="Lucro por cliente — últimos meses"
+          legenda={`${historicoLucro[0].rotulo} a ${historicoLucro[historicoLucro.length - 1].rotulo}`}
+        >
+          <div className="mb-4 min-w-0">
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart data={resultadoPorMes} margin={{ left: 4, right: 4 }}>
+                <XAxis
+                  dataKey="rotulo"
+                  tick={{ fontSize: 10, fill: "#94a3b8" }}
+                  axisLine={false}
+                  tickLine={false}
+                />
+                <YAxis hide />
+                <Tooltip content={TooltipEscuro} cursor={{ fill: "#1e293b80" }} />
+                <Bar
+                  dataKey="resultado"
+                  name="Resultado do mês"
+                  radius={[4, 4, 0, 0]}
+                  isAnimationActive={false}
+                >
+                  {resultadoPorMes.map((p) => (
+                    <Cell key={p.rotulo} fill={p.resultado < 0 ? "#f43f5e" : "#10B981"} />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[480px] text-left text-xs text-slate-300">
+              <thead className="border-y border-slate-800 text-[10px] font-semibold uppercase tracking-wider text-slate-500">
+                <tr>
+                  <th className="px-2 py-2">Cliente</th>
+                  {historicoLucro.map((p) => (
+                    <th key={p.mes} className="px-2 py-2 text-right">
+                      {p.rotulo}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-800">
+                {clientesNoHistorico.map((cliente) => (
+                  <tr key={cliente.id}>
+                    <td className="px-2 py-2 font-semibold text-slate-100">{cliente.nome}</td>
+                    {historicoLucro.map((p) => {
+                      const linha = p.dados.porCliente.find((c) => c.clienteId === cliente.id);
+                      const margem = linha?.margem ?? null;
+                      return (
+                        <td
+                          key={p.mes}
+                          className={`px-2 py-2 text-right tabular-nums ${
+                            margem === null
+                              ? "text-slate-600"
+                              : margem < 0
+                              ? "text-rose-400"
+                              : "text-emerald-400"
+                          }`}
+                        >
+                          {margem === null ? "—" : formatBRL(margem)}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+                <tr className="border-t border-slate-700">
+                  <td className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wide text-slate-400">
+                    Resultado do mês
+                  </td>
+                  {historicoLucro.map((p) => (
+                    <td
+                      key={p.mes}
+                      className={`px-2 py-2 text-right font-bold tabular-nums ${
+                        p.dados.resultado < 0 ? "text-rose-400" : "text-emerald-400"
+                      }`}
+                    >
+                      {formatBRL(p.dados.resultado)}
+                    </td>
+                  ))}
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[11px] text-slate-500">
+            Mesma margem de contribuição do card acima, mês a mês — &quot;—&quot; é cliente sem
+            valor mensal cadastrado naquele mês.
+          </p>
+        </CardPainel>
+      )}
 
       {/* Relatório detalhado */}
       <CardPainel>
