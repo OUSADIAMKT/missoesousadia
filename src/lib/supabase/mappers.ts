@@ -20,6 +20,7 @@ export interface ClienteRow {
   id: string;
   nome: string;
   valor_mensal: number | null;
+  token_aprovacao: string;
 }
 
 export interface ProjetoRow {
@@ -106,7 +107,12 @@ export interface UsuarioRow {
 }
 
 export function clienteFromRow(row: ClienteRow): Cliente {
-  return { id: row.id, nome: row.nome, valorMensal: row.valor_mensal ?? undefined };
+  return {
+    id: row.id,
+    nome: row.nome,
+    valorMensal: row.valor_mensal ?? undefined,
+    tokenAprovacao: row.token_aprovacao,
+  };
 }
 
 export function projetoFromRow(row: ProjetoRow): Projeto {

@@ -283,6 +283,7 @@ export default function Home() {
           onAdicionarCliente={estrutura.adicionarCliente}
           onAtualizarCliente={estrutura.atualizarCliente}
           onRemoverCliente={estrutura.removerCliente}
+          onRegenerarLinkAprovacao={estrutura.regenerarLinkAprovacao}
           onAdicionarProjeto={estrutura.adicionarProjeto}
           onRemoverProjeto={estrutura.removerProjeto}
           onVerMissoesDoProjeto={irParaMissoesDoProjeto}

@@ -87,7 +87,11 @@ $$;
 create table clientes (
   id uuid primary key default gen_random_uuid(),
   nome text not null,
-  valor_mensal numeric
+  valor_mensal numeric,
+  -- Token do link público de aprovação (/aprovar/<token>, ver seção
+  -- APROVAÇÃO DO CLIENTE mais abaixo). Regenerável a qualquer momento pelo
+  -- time — o link antigo para de funcionar.
+  token_aprovacao uuid unique not null default gen_random_uuid()
 );
 
 create table projetos (
@@ -204,6 +208,10 @@ create index on apontamentos (tarefa_id);
 -- de um parâmetro que o cliente poderia mandar errado.
 -- ---------------------------------------------------------------------------
 
+-- `app.ator_externo` é uma GUC de sessão que aprovacao_responder() seta antes
+-- de gravar (ver seção APROVAÇÃO DO CLIENTE) — é como "Cliente — Nome" entra
+-- no histórico em vez de "Desconhecido". Nula em qualquer outro fluxo, então
+-- não muda nada do comportamento de sempre.
 create or replace function registrar_historico_status()
 returns trigger
 language plpgsql
@@ -216,7 +224,7 @@ begin
     new.id,
     case when tg_op = 'UPDATE' then old.status else null end,
     new.status,
-    coalesce(nome_do_usuario_logado(), 'Desconhecido')
+    coalesce(nullif(current_setting('app.ator_externo', true), ''), nome_do_usuario_logado(), 'Desconhecido')
   );
   return new;
 end;
@@ -264,7 +272,9 @@ create trigger anexos_forcar_criado_por
 
 -- ---------------------------------------------------------------------------
 -- COMENTÁRIOS: mesma lógica de forcar_criado_por() acima, só que a coluna se
--- chama "autor" aqui — um comentário é sempre de quem está logado.
+-- chama "autor" aqui — um comentário é sempre de quem está logado, ou do
+-- cliente respondendo pela página pública de aprovação (mesma GUC
+-- app.ator_externo de registrar_historico_status() acima).
 -- ---------------------------------------------------------------------------
 
 create or replace function forcar_autor_comentario()
@@ -274,7 +284,7 @@ security definer
 set search_path = public
 as $$
 begin
-  new.autor := coalesce(nome_do_usuario_logado(), 'Desconhecido');
+  new.autor := coalesce(nullif(current_setting('app.ator_externo', true), ''), nome_do_usuario_logado(), 'Desconhecido');
   return new;
 end;
 $$;
@@ -353,6 +363,108 @@ create policy "time remove anexos no storage" on storage.objects
 alter publication supabase_realtime add table
   usuarios, clientes, projetos, tarefas, historico_status, bloqueios, anexos, comentarios,
   apontamentos;
+
+-- ---------------------------------------------------------------------------
+-- APROVAÇÃO DO CLIENTE: página pública em /aprovar/<token> (ver
+-- src/app/aprovar/[token]/page.tsx), sem login. Como o visitante não é um
+-- `usuario` autenticado, RLS normal não serve — o acesso passa por 3 funções
+-- `security definer` chamadas pelo role `anon`, que validam o token contra
+-- `clientes.token_aprovacao` e só devolvem/alteram dado daquele cliente.
+-- Nunca expõe custo, vínculo, quem executa, bloqueios, comentários internos
+-- ou anexos — só o necessário pra entender e aprovar a entrega.
+-- ---------------------------------------------------------------------------
+
+create or replace function aprovacao_cliente(p_token uuid)
+returns table(id uuid, nome text)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select id, nome from clientes where token_aprovacao = p_token;
+$$;
+
+create or replace function aprovacao_missoes(p_token uuid)
+returns table(
+  id uuid,
+  titulo text,
+  descricao text,
+  prazo_entrega date,
+  status text,
+  tags text[],
+  projeto_nome text
+)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select t.id, t.titulo, t.descricao, t.prazo_entrega, t.status, t.tags, pr.nome
+  from tarefas t
+  join projetos pr on pr.id = t.projeto_id
+  join clientes c on c.id = pr.cliente_id
+  where c.token_aprovacao = p_token
+    and t.status <> 'Concluído'
+  order by t.prazo_entrega asc;
+$$;
+
+-- Só aceita agir sobre uma missão que pertence ao cliente do token e está,
+-- agora, em "Aguardando Cliente" — nunca outro cliente, nunca um status que
+-- já mudou por outro caminho enquanto a página estava aberta.
+create or replace function aprovacao_responder(
+  p_token uuid,
+  p_tarefa_id uuid,
+  p_acao text,
+  p_motivo text default null
+)
+returns void
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_cliente_id uuid;
+  v_cliente_nome text;
+  v_status_atual text;
+begin
+  if p_acao not in ('aprovar', 'ajustes') then
+    raise exception 'Ação inválida.';
+  end if;
+  if p_acao = 'ajustes' and coalesce(trim(p_motivo), '') = '' then
+    raise exception 'Descreva o que precisa ajustar.';
+  end if;
+
+  select id, nome into v_cliente_id, v_cliente_nome
+  from clientes where token_aprovacao = p_token;
+  if v_cliente_id is null then
+    raise exception 'Link inválido.';
+  end if;
+
+  select t.status into v_status_atual
+  from tarefas t
+  join projetos pr on pr.id = t.projeto_id
+  where t.id = p_tarefa_id and pr.cliente_id = v_cliente_id;
+  if v_status_atual is null then
+    raise exception 'Missão não encontrada.';
+  end if;
+  if v_status_atual <> 'Aguardando Cliente' then
+    raise exception 'Essa missão não está mais aguardando aprovação.';
+  end if;
+
+  perform set_config('app.ator_externo', 'Cliente — ' || v_cliente_nome, true);
+
+  if p_acao = 'aprovar' then
+    update tarefas set status = 'Aprovado' where id = p_tarefa_id;
+  else
+    update tarefas set status = 'Ajustes Solicitados' where id = p_tarefa_id;
+    insert into comentarios (tarefa_id, texto) values (p_tarefa_id, p_motivo);
+  end if;
+end;
+$$;
+
+grant execute on function aprovacao_cliente(uuid) to anon;
+grant execute on function aprovacao_missoes(uuid) to anon;
+grant execute on function aprovacao_responder(uuid, uuid, text, text) to anon;
 
 -- ---------------------------------------------------------------------------
 -- SEED — só o primeiro admin. O resto do time é adicionado depois direto

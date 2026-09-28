@@ -117,6 +117,9 @@ export interface Cliente {
   id: string;
   nome: string;
   valorMensal?: number; // R$ — base para rentabilidade (fase futura)
+  // Token do link público de aprovação (/aprovar/<token>) — regenerável, o
+  // link antigo para de funcionar quando um novo é gerado.
+  tokenAprovacao: string;
 }
 
 export interface Projeto {

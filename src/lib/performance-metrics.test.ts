@@ -145,8 +145,8 @@ test("formatMes devolve a entrada crua se não for um mês válido", () => {
 
 // --- lucroPorClienteNoMes ---------------------------------------------------
 
-const ekilibre: Cliente = { id: "c1", nome: "Ekilibre", valorMensal: 3000 };
-const flix: Cliente = { id: "c2", nome: "FLIX", valorMensal: 1000 };
+const ekilibre: Cliente = { id: "c1", nome: "Ekilibre", valorMensal: 3000, tokenAprovacao: "tok-c1" };
+const flix: Cliente = { id: "c2", nome: "FLIX", valorMensal: 1000, tokenAprovacao: "tok-c2" };
 
 test("lucroPorClienteNoMes rateia o custo fixo entre as entregas do mês", () => {
   // Pacote de R$ 3.000 e 3 entregas: 2 para a Ekilibre, 1 para a FLIX.
@@ -236,7 +236,7 @@ test("lucroPorClienteNoMes separa o custo de entrega sem cliente", () => {
 });
 
 test("lucroPorClienteNoMes deixa a margem nula para cliente sem valor mensal", () => {
-  const semValor: Cliente = { id: "c3", nome: "Sem contrato" };
+  const semValor: Cliente = { id: "c3", nome: "Sem contrato", tokenAprovacao: "tok-c3" };
   const [linha] = lucroPorClienteNoMes([], [semValor], [], "2026-09").porCliente;
   assert.equal(linha.receita, null);
   assert.equal(linha.margem, null);
@@ -275,7 +275,7 @@ test("lucroPorClienteNoMes soma o resultado do mês descontando o custo ocioso",
 });
 
 test("lucroPorClienteNoMes conta quantos clientes ficaram fora do resultado", () => {
-  const semValor: Cliente = { id: "c3", nome: "Sem contrato" };
+  const semValor: Cliente = { id: "c3", nome: "Sem contrato", tokenAprovacao: "tok-c3" };
   const resultado = lucroPorClienteNoMes([], [ekilibre, semValor], [], "2026-09");
   assert.equal(resultado.resultado, 3000);
   assert.equal(resultado.clientesSemReceita, 1);

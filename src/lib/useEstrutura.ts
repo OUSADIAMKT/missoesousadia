@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { createClient } from "./supabase/client";
 import { clienteFromRow, projetoFromRow, type ClienteRow, type ProjetoRow } from "./supabase/mappers";
 import type { Cliente, Projeto } from "./types";
+import { uid } from "./utils";
 
 const PROJETO_PADRAO = "Geral";
 
@@ -102,6 +103,25 @@ export function useEstrutura() {
       const { error } = await supabase.from("clientes").delete().eq("id", id);
       if (error) {
         console.error("Erro ao remover cliente:", error.message);
+        return false;
+      }
+      buscar();
+      return true;
+    },
+    [buscar]
+  );
+
+  // Invalida o link público de aprovação atual e gera um novo — quem tiver
+  // o link antigo salvo (ex.: numa conversa de WhatsApp antiga) perde acesso.
+  const regenerarLinkAprovacao = useCallback(
+    async (id: string) => {
+      const supabase = createClient();
+      const { error } = await supabase
+        .from("clientes")
+        .update({ token_aprovacao: uid() })
+        .eq("id", id);
+      if (error) {
+        console.error("Erro ao gerar novo link de aprovação:", error.message);
         return false;
       }
       buscar();
@@ -228,6 +248,7 @@ export function useEstrutura() {
     adicionarCliente,
     atualizarCliente,
     removerCliente,
+    regenerarLinkAprovacao,
     adicionarProjeto,
     atualizarProjeto,
     removerProjeto,

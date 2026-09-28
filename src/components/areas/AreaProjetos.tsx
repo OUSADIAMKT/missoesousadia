@@ -11,6 +11,7 @@ interface AreaProjetosProps {
   onAdicionarCliente: (nome: string, valorMensal?: number) => void;
   onAtualizarCliente: (id: string, dados: Partial<Omit<Cliente, "id">>) => Promise<boolean>;
   onRemoverCliente: (id: string) => Promise<boolean>;
+  onRegenerarLinkAprovacao: (id: string) => Promise<boolean>;
   onAdicionarProjeto: (clienteId: string, nome: string) => void;
   onRemoverProjeto: (id: string) => Promise<boolean>;
   onVerMissoesDoProjeto: (projetoId: string) => void;
@@ -24,6 +25,7 @@ export function AreaProjetos({
   onAdicionarCliente,
   onAtualizarCliente,
   onRemoverCliente,
+  onRegenerarLinkAprovacao,
   onAdicionarProjeto,
   onRemoverProjeto,
   onVerMissoesDoProjeto,
@@ -31,6 +33,33 @@ export function AreaProjetos({
 }: AreaProjetosProps) {
   const [novoCliente, setNovoCliente] = useState("");
   const [novoProjetoPorCliente, setNovoProjetoPorCliente] = useState<Record<string, string>>({});
+  const [linkCopiadoId, setLinkCopiadoId] = useState<string | null>(null);
+
+  function linkAprovacao(cliente: Cliente): string {
+    const origem = typeof window !== "undefined" ? window.location.origin : "";
+    return `${origem}/aprovar/${cliente.tokenAprovacao}`;
+  }
+
+  async function copiarLink(cliente: Cliente) {
+    try {
+      await navigator.clipboard.writeText(linkAprovacao(cliente));
+      setLinkCopiadoId(cliente.id);
+      setTimeout(() => setLinkCopiadoId((atual) => (atual === cliente.id ? null : atual)), 2000);
+    } catch {
+      onNotificarErro("Não foi possível copiar — selecione e copie o link manualmente.");
+    }
+  }
+
+  async function regenerarLink(cliente: Cliente) {
+    if (
+      !window.confirm(
+        `Gerar um novo link de aprovação para ${cliente.nome}? O link atual (se já foi enviado) para de funcionar.`
+      )
+    )
+      return;
+    const ok = await onRegenerarLinkAprovacao(cliente.id);
+    if (!ok) onNotificarErro("Não foi possível gerar um novo link. Tente novamente.");
+  }
 
   function contarMissoes(projetoId: string) {
     const doProjeto = tarefas.filter((t) => t.projetoId === projetoId);
@@ -116,6 +145,31 @@ export function AreaProjetos({
                     </span>
                   )}
                 </label>
+
+                <div className="mb-3 rounded-sm border border-border bg-background p-2.5">
+                  <p className="mb-1 text-xs font-medium text-foreground">
+                    Link de aprovação do cliente
+                  </p>
+                  <div className="flex items-center gap-2">
+                    <span className="min-w-0 flex-1 truncate text-[11px] text-muted">
+                      {linkAprovacao(cliente)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => copiarLink(cliente)}
+                      className="shrink-0 text-xs font-medium text-brand hover:underline"
+                    >
+                      {linkCopiadoId === cliente.id ? "Copiado!" : "Copiar"}
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => regenerarLink(cliente)}
+                    className="mt-1 text-[11px] font-medium text-muted hover:text-danger"
+                  >
+                    Gerar novo link (invalida o atual)
+                  </button>
+                </div>
 
                 <ul className="space-y-1.5">
                   {projetosDoCliente.map((projeto) => {
