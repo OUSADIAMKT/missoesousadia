@@ -408,6 +408,29 @@ as $$
   order by t.prazo_entrega asc;
 $$;
 
+-- Anexos de UMA missão, só se ela pertencer ao cliente do token — o cliente
+-- precisa ver o arquivo de verdade pra aprovar de verdade, não só um título.
+-- O download em si (link assinado do Storage) é gerado pela rota
+-- /api/aprovacao/anexo do app, não daqui: a API do Storage não tem uma
+-- função SQL pra assinar URL. Essa rota usa a service_role key só ali, e só
+-- depois de chamar esta função pra confirmar que o anexo é mesmo desse
+-- cliente. Ver src/app/api/aprovacao/anexo/route.ts.
+create or replace function aprovacao_anexos(p_token uuid, p_tarefa_id uuid)
+returns table(id uuid, nome text, caminho text, tamanho bigint, tipo text)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select a.id, a.nome, a.caminho, a.tamanho, a.tipo
+  from anexos a
+  join tarefas t on t.id = a.tarefa_id
+  join projetos pr on pr.id = t.projeto_id
+  join clientes c on c.id = pr.cliente_id
+  where a.tarefa_id = p_tarefa_id
+    and c.token_aprovacao = p_token;
+$$;
+
 -- Só aceita agir sobre uma missão que pertence ao cliente do token e está,
 -- agora, em "Aguardando Cliente" — nunca outro cliente, nunca um status que
 -- já mudou por outro caminho enquanto a página estava aberta.
@@ -464,6 +487,7 @@ $$;
 
 grant execute on function aprovacao_cliente(uuid) to anon;
 grant execute on function aprovacao_missoes(uuid) to anon;
+grant execute on function aprovacao_anexos(uuid, uuid) to anon;
 grant execute on function aprovacao_responder(uuid, uuid, text, text) to anon;
 
 -- ---------------------------------------------------------------------------

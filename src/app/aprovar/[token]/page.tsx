@@ -1,9 +1,9 @@
 "use client";
 
-import { use, useCallback, useEffect, useState } from "react";
+import { use, useCallback, useEffect, useRef, useState } from "react";
 import { createClient } from "@/lib/supabase/client";
 import type { Status } from "@/lib/types";
-import { corStatus, formatDateBR } from "@/lib/utils";
+import { corStatus, formatDateBR, formatTamanhoArquivo } from "@/lib/utils";
 
 // Página pública (sem login — ver src/proxy.ts) que um cliente da Ousadia
 // abre pelo link único dele (/aprovar/<token>, gerado em AreaProjetos.tsx).
@@ -21,6 +21,14 @@ interface MissaoAprovacao {
   projeto_nome: string;
 }
 
+interface AnexoAprovacao {
+  id: string;
+  nome: string;
+  caminho: string;
+  tamanho: number | null;
+  tipo: string | null;
+}
+
 type EstadoCliente = "carregando" | "invalido" | "ok";
 
 export default function AprovarPage(props: PageProps<"/aprovar/[token]">) {
@@ -36,11 +44,72 @@ export default function AprovarPage(props: PageProps<"/aprovar/[token]">) {
   const [erroAcao, setErroAcao] = useState("");
   const [ultimaConfirmacao, setUltimaConfirmacao] = useState("");
 
+  const [anexosPorMissao, setAnexosPorMissao] = useState<Record<string, AnexoAprovacao[]>>({});
+  const [baixandoId, setBaixandoId] = useState<string | null>(null);
+  const anexosBuscadosRef = useRef<Set<string>>(new Set());
+
   const buscarMissoes = useCallback(async () => {
     const supabase = createClient();
     const { data, error } = await supabase.rpc("aprovacao_missoes", { p_token: token });
     if (!error && data) setMissoes(data as MissaoAprovacao[]);
   }, [token]);
+
+  // Anexos só das missões aguardando aprovação — é onde o cliente precisa
+  // ver o arquivo pra decidir. `anexosBuscadosRef` evita rebuscar a mesma
+  // missão a cada re-render (aprovar/pedir ajuste refaz `missoes`).
+  useEffect(() => {
+    const aguardandoIds = missoes
+      .filter((m) => m.status === "Aguardando Cliente")
+      .map((m) => m.id);
+    const faltando = aguardandoIds.filter((id) => !anexosBuscadosRef.current.has(id));
+    if (faltando.length === 0) return;
+    faltando.forEach((id) => anexosBuscadosRef.current.add(id));
+
+    let ativo = true;
+    (async () => {
+      const supabase = createClient();
+      const resultados = await Promise.all(
+        faltando.map(async (id) => {
+          const { data } = await supabase.rpc("aprovacao_anexos", {
+            p_token: token,
+            p_tarefa_id: id,
+          });
+          return [id, (data as AnexoAprovacao[] | null) ?? []] as const;
+        })
+      );
+      if (!ativo) return;
+      setAnexosPorMissao((atual) => {
+        const novo = { ...atual };
+        for (const [id, lista] of resultados) novo[id] = lista;
+        return novo;
+      });
+    })();
+    return () => {
+      ativo = false;
+    };
+  }, [missoes, token]);
+
+  async function baixarAnexo(missaoId: string, anexo: AnexoAprovacao) {
+    setBaixandoId(anexo.id);
+    setErroAcao("");
+    try {
+      const resposta = await fetch("/api/aprovacao/anexo", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ token, tarefaId: missaoId, anexoId: anexo.id }),
+      });
+      const dados = await resposta.json().catch(() => null);
+      if (!resposta.ok) {
+        setErroAcao(dados?.erro ?? "Não foi possível baixar o arquivo.");
+        return;
+      }
+      window.open(dados.url, "_blank", "noopener,noreferrer");
+    } catch {
+      setErroAcao("Não foi possível baixar o arquivo.");
+    } finally {
+      setBaixandoId(null);
+    }
+  }
 
   useEffect(() => {
     let ativo = true;
@@ -181,6 +250,28 @@ export default function AprovarPage(props: PageProps<"/aprovar/[token]">) {
                   </div>
                 )}
                 <p className="mb-3 text-xs text-muted">Prazo: {formatDateBR(m.prazo_entrega)}</p>
+
+                {(anexosPorMissao[m.id]?.length ?? 0) > 0 && (
+                  <div className="mb-3 space-y-1.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      Arquivos
+                    </p>
+                    {anexosPorMissao[m.id]!.map((a) => (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() => baixarAnexo(m.id, a)}
+                        disabled={baixandoId === a.id}
+                        className="flex w-full items-center justify-between gap-2 rounded-sm border border-border bg-background px-2.5 py-1.5 text-left text-xs text-foreground transition hover:border-brand disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        <span className="min-w-0 truncate">📎 {a.nome}</span>
+                        <span className="shrink-0 text-brand">
+                          {baixandoId === a.id ? "Abrindo..." : `Baixar · ${formatTamanhoArquivo(a.tamanho)}`}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
 
                 {ajusteAbertoId === m.id ? (
                   <div className="space-y-2">
